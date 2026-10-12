@@ -74,6 +74,9 @@ try {
   const params = new URLSearchParams({ client_id: settings.OAUTH_CLIENT_ID, redirect_uri: callback,
     response_type: 'code', scope: 'tracker', resource, state: 'synthetic-state', code_challenge_method: 'S256',
     code_challenge: createHash('sha256').update(verifier).digest('base64url') });
+  const approval = await fetch(base + '/oauth/authorize?' + params);
+  assert.equal(approval.headers.get('referrer-policy'), 'same-origin');
+  assert.match(await approval.text(), /<meta name="referrer" content="same-origin">/);
   const consent = await fetch(base + '/oauth/authorize?' + params, {
     method: 'POST', redirect: 'manual', headers: { Origin: publicOrigin, 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ code: '5678' }),
