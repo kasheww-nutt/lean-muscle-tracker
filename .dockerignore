@@ -1,0 +1,12 @@
+node_modules
+frontend/.next
+frontend/dist
+.git
+.env
+.env.*
+!.env.example
+**/.dev.vars*
+data
+*.sqlite*
+*.db*
+.openai

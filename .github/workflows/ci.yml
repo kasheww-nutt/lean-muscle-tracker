@@ -1,0 +1,23 @@
+name: Test and build
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check:public
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: node scripts/smoke.mjs
+      - run: docker build -f infrastructure/docker/Dockerfile -t lean-muscle-tracker:ci .
+      - run: docker run --rm --entrypoint node lean-muscle-tracker:ci scripts/smoke.mjs

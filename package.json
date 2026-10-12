@@ -1,0 +1,36 @@
+{
+  "name": "lean-muscle-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "next dev frontend --hostname 0.0.0.0 --port 5173",
+    "build": "next build frontend --webpack",
+    "typecheck": "tsc --noEmit --incremental false",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "check:public": "node tests/public-source.test.mjs",
+    "start": "node scripts/start.mjs",
+    "test:production": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "aws-jwt-verify": "^5.2.1",
+    "drizzle-orm": "0.45.2",
+    "lucide-react": "^1.31.0",
+    "next": "16.4.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "recharts": "^3.8.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "tailwindcss": "4.2.1",
+    "typescript": "5.9.3"
+  },
+  "type": "module",
+  "description": "Private nutrition, weight, training and hydration tracker with a lavender dashboard and MCP tools."
+}
