@@ -1,3 +1,4 @@
+// Shared configuration check used by the two-instance deployment.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 const keys=['DATABASE_URL','DATABASE_SSL_MODE','TRACKER_OWNER_ID','TRACKER_ACCESS_CODE','TRACKER_SESSION_SECRET','PUBLIC_BASE_URL','TRACKER_MCP_TOKEN','OAUTH_CLIENT_ID','OAUTH_CLIENT_SECRET','OAUTH_REDIRECT_URIS','COGNITO_USER_POOL_ID','COGNITO_CLIENT_ID','COGNITO_CLIENT_SECRET','COGNITO_DOMAIN','COGNITO_OWNER_SUB'];
