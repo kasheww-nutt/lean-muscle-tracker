@@ -6,7 +6,12 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import pg from 'pg';
 registerHooks({resolve(specifier,context,next){if(specifier.startsWith('.')&&context.parentURL?.startsWith('file:')&&!/\.[a-z]+$/.test(specifier)){const url=new URL(specifier+'.ts',context.parentURL);if(existsSync(fileURLToPath(url)))return next(url.href,context);}return next(specifier,context);}});
-const {openPostgres,postgresSql}=await import('../backend/services/postgres.ts');
+const {openPostgres,postgresSql,postgresConfig}=await import('../backend/services/postgres.ts');
+test('Database URL options cannot override verified TLS or the configured host',()=>{
+ for(const option of ['ssl=no-verify','ssl=0','sslmode=disable','sslnegotiation=direct','host=other.example.test','password=override']) {
+  assert.throws(()=>postgresConfig('postgresql://synthetic-owner:synthetic-password@db.example.test/tracker?'+option),/Unsupported/);
+ }
+});
 test('PostgreSQL binds placeholders without changing quoted values or rowid text',()=>{
  assert.equal(postgresSql("SELECT rowid, '?' AS question, 'rowid' AS name WHERE id=? AND date=?"),"SELECT record_order, '?' AS question, 'rowid' AS name WHERE id=$1 AND date=$2");
 });

@@ -24,5 +24,5 @@ if (process.argv[2] === 'backup') {
   const file = process.argv[3];
   if (process.env.RESTORE_CONFIRM !== 'disposable-database-only') throw Error('Set RESTORE_CONFIRM=disposable-database-only after checking the fresh target.');
   if (process.argv.length !== 4 || !file?.startsWith('/backups/') || file.includes('/../') || !file.endsWith('.dump')) throw Error('Supply one backup file mounted under /backups.');
-  run('pg_restore', ['--exit-on-error', '--single-transaction', '--no-owner', '--no-acl', file]);
+  run('pg_restore', ['--dbname=' + environment.PGDATABASE, '--exit-on-error', '--single-transaction', '--no-owner', '--no-acl', file]);
 } else throw Error('Choose backup or restore.');

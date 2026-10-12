@@ -7,8 +7,8 @@ import type { TrackerDatabase } from './database';
 export function postgresConfig(connectionString: string): PoolConfig {
   const url = new URL(connectionString);
   if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw Error('DATABASE_URL must be a PostgreSQL URL.');
-  for (const key of ['sslmode', 'sslcert', 'sslkey', 'sslrootcert']) {
-    if (url.searchParams.has(key)) throw Error('Use DATABASE_SSL_MODE / DATABASE_SSL_CA_FILE instead of SSL URL parameters.');
+  for (const key of url.searchParams.keys()) {
+    if (!['options', 'application_name'].includes(key)) throw Error('Unsupported database URL option. Use DATABASE_SSL_MODE / DATABASE_SSL_CA_FILE and pool environment settings.');
   }
   const mode = process.env.DATABASE_SSL_MODE || 'verify-full';
   if (!['verify-full', 'disable'].includes(mode)) throw Error('DATABASE_SSL_MODE must be verify-full or disable.');
