@@ -2,6 +2,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { env } from '../services/runtime';
 import { allowAttempt, hash, origin } from '../services/security';
 import { safeCodeEqual, sameOrigin } from '../services/access';
+import type { TrackerDatabase } from '../services/database';
 
 const headers = { 'Cache-Control': 'no-store', 'Pragma':'no-cache' };
 const opaque = () => randomBytes(32).toString('base64url');
@@ -55,11 +56,11 @@ export async function authorize(request: Request) {
     return new Response(null,{status:303,headers:{...headers,Location:redirect.href}});
   } catch { return fail('invalid_request'); }
 }
-async function issue(client: string, resource: string) {
+async function issue(client: string, resource: string, db: TrackerDatabase) {
   const access = opaque(), refresh = opaque();
-  await env.DB.prepare('DELETE FROM oauth_tokens WHERE expires_at<=?').bind(Date.now()).run();
+  await db.prepare('DELETE FROM oauth_tokens WHERE expires_at<=?').bind(Date.now()).run();
   for (const [token,kind,ttl] of [[access,'access',3600_000],[refresh,'refresh',30*86400_000]] as const) {
-    await env.DB.prepare('INSERT INTO oauth_tokens (token_hash,client_id,kind,resource,expires_at) VALUES (?,?,?,?,?)').bind(hash(token),client,kind,resource,Date.now()+ttl).run();
+    await db.prepare('INSERT INTO oauth_tokens (token_hash,client_id,kind,resource,expires_at) VALUES (?,?,?,?,?)').bind(hash(token),client,kind,resource,Date.now()+ttl).run();
   }
   return Response.json({access_token:access,refresh_token:refresh,token_type:'Bearer',expires_in:3600,scope:'tracker'}, {headers});
 }
@@ -82,19 +83,22 @@ export async function token(request: Request, revoke = false) {
       return new Response(null,{status:200,headers});
     }
     if (body.get('resource') !== `${base}/mcp`) return fail('invalid_target');
+    const operation = async (db: TrackerDatabase) => {
     if (body.get('grant_type') === 'refresh_token') {
       const value = hash(body.get('refresh_token') || '');
       // DELETE RETURNING consumes the token atomically, preventing replay across workers.
-      const row = await env.DB.prepare("DELETE FROM oauth_tokens WHERE token_hash=? AND client_id=? AND kind='refresh' AND resource=? AND expires_at>? RETURNING resource").bind(value,client,`${base}/mcp`,Date.now()).first<{resource:string}>();
+      const row = await db.prepare("DELETE FROM oauth_tokens WHERE token_hash=? AND client_id=? AND kind='refresh' AND resource=? AND expires_at>? RETURNING resource").bind(value,client,`${base}/mcp`,Date.now()).first<{resource:string}>();
       if (!row) return fail('invalid_grant');
-      return issue(client,row.resource);
+      return issue(client,row.resource,db);
     }
     if (body.get('grant_type') !== 'authorization_code') return fail('unsupported_grant_type');
     const verifier = body.get('code_verifier') || '';
     if (!/^[A-Za-z0-9._~-]{43,128}$/.test(verifier)) return fail('invalid_grant');
     const challenge = createHash('sha256').update(verifier).digest('base64url');
-    const row = await env.DB.prepare('DELETE FROM oauth_codes WHERE code_hash=? AND client_id=? AND redirect_uri=? AND challenge=? AND resource=? AND expires_at>? RETURNING resource').bind(hash(body.get('code') || ''),client,body.get('redirect_uri'),challenge,`${base}/mcp`,Date.now()).first<{resource:string}>();
+    const row = await db.prepare('DELETE FROM oauth_codes WHERE code_hash=? AND client_id=? AND redirect_uri=? AND challenge=? AND resource=? AND expires_at>? RETURNING resource').bind(hash(body.get('code') || ''),client,body.get('redirect_uri'),challenge,`${base}/mcp`,Date.now()).first<{resource:string}>();
     if (!row) return fail('invalid_grant');
-    return issue(client,row.resource);
+    return issue(client,row.resource,db);
+    };
+    return env.DB.transaction ? await env.DB.transaction(operation) : await operation(env.DB);
   } catch { return fail('invalid_request'); }
 }

@@ -1,0 +1,12 @@
+# Use with both base Compose and db-tools when a private CA is required.
+services:
+  tracker:
+    volumes:
+      - ${TRACKER_DATABASE_CA_PATH:?Set the host CA file path}:/run/tracker-db-ca.pem:ro
+    environment:
+      DATABASE_SSL_CA_FILE: /run/tracker-db-ca.pem
+  db-tools:
+    volumes:
+      - ${TRACKER_DATABASE_CA_PATH:?Set the host CA file path}:/run/tracker-db-ca.pem:ro
+    environment:
+      DATABASE_SSL_CA_FILE: /run/tracker-db-ca.pem

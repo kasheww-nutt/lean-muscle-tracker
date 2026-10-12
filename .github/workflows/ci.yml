@@ -5,8 +5,21 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-ci-password
+          POSTGRES_DB: tracker_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d tracker_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       NEXT_TELEMETRY_DISABLED: '1'
+      TEST_DATABASE_URL: postgresql://postgres:synthetic-ci-password@127.0.0.1:5432/tracker_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,7 +30,24 @@ jobs:
       - run: npm run check:public
       - run: npm run typecheck
       - run: npm test
+      - run: python3 -m unittest discover -s tests -p 'deploy_test.py'
       - run: npm run build
       - run: node scripts/smoke.mjs
+      - run: npm run test:replicas
       - run: docker build -f infrastructure/docker/Dockerfile -t lean-muscle-tracker:ci .
       - run: docker run --rm --entrypoint node lean-muscle-tracker:ci scripts/smoke.mjs
+      - run: docker run --rm --network host -e TEST_DATABASE_URL --entrypoint node lean-muscle-tracker:ci scripts/replicas-smoke.mjs
+      - name: Verify PostgreSQL backup and restore on disposable databases
+        shell: bash
+        run: |
+          set -euo pipefail
+          container='${{ job.services.postgres.id }}'
+          docker exec "$container" createdb -U postgres tracker_backup_source
+          docker exec "$container" psql -U postgres -d tracker_backup_source -v ON_ERROR_STOP=1 -c 'CREATE TABLE evidence(id integer PRIMARY KEY, value text); INSERT INTO evidence VALUES (1, '\''synthetic shared record'\'');'
+          docker cp infrastructure/postgres/backup.sh "$container":/tmp/backup.sh
+          docker cp infrastructure/postgres/restore.sh "$container":/tmp/restore.sh
+          backup=$(docker exec -e DATABASE_URL=postgresql://postgres:synthetic-ci-password@127.0.0.1:5432/tracker_backup_source -e DATABASE_SSL_MODE=disable "$container" sh /tmp/backup.sh)
+          docker exec "$container" createdb -U postgres tracker_backup_restored
+          docker exec -e DATABASE_URL=postgresql://postgres:synthetic-ci-password@127.0.0.1:5432/tracker_backup_restored -e DATABASE_SSL_MODE=disable -e RESTORE_CONFIRM=disposable-database-only "$container" sh /tmp/restore.sh "$backup"
+          restored=$(docker exec "$container" psql -U postgres -d tracker_backup_restored -Atc 'SELECT value FROM evidence WHERE id=1')
+          test "$restored" = 'synthetic shared record'

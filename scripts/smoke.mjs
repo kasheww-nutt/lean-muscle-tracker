@@ -17,7 +17,7 @@ const settings = {
   TRACKER_SESSION_SECRET: 'synthetic-session-secret-at-least-32-characters', TRACKER_MCP_TOKEN: bearer,
   OAUTH_CLIENT_ID: 'synthetic-client', OAUTH_CLIENT_SECRET: 'synthetic-client-secret-at-least-32-characters', OAUTH_REDIRECT_URIS: callback,
   COGNITO_USER_POOL_ID: '', COGNITO_CLIENT_ID: '', COGNITO_CLIENT_SECRET: '', COGNITO_DOMAIN: '', COGNITO_OWNER_SUB: '',
-  DATABASE_PATH: database, MIGRATIONS_PATH: join(process.cwd(), 'database/migrations'),
+  DATABASE_DRIVER: 'sqlite', DATABASE_URL: '', DATABASE_PATH: database, MIGRATIONS_PATH: join(process.cwd(), 'database/migrations'),
 };
 const base = 'http://127.0.0.1:5173';
 let running, exit, logs = '', rpcId = 0;

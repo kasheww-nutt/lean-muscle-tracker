@@ -1,5 +1,6 @@
 import { DatabaseSync, backup } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
+if (process.env.DATABASE_DRIVER !== 'sqlite') throw Error('PostgreSQL backups use the db-tools Compose service; SQLite backup requires DATABASE_DRIVER=sqlite.');
 const directory = process.env.BACKUP_DIRECTORY || '/data/backups';
 mkdirSync(directory,{recursive:true,mode:0o700});
 const destination = `${directory}/tracker-${new Date().toISOString().replace(/[:.]/g,'-')}.sqlite`;

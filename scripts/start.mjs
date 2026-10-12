@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { postgresConfig } from '../backend/services/postgres.ts';
 for (const key of ['TRACKER_OWNER_ID','TRACKER_ACCESS_CODE','TRACKER_SESSION_SECRET','TRACKER_MCP_TOKEN','OAUTH_CLIENT_ID','OAUTH_CLIENT_SECRET','OAUTH_REDIRECT_URIS','COGNITO_USER_POOL_ID','COGNITO_CLIENT_ID','COGNITO_CLIENT_SECRET','COGNITO_DOMAIN','COGNITO_OWNER_SUB']) {
   if (process.env[key]?.includes('replace-')) throw Error(`${key} contains an unconfigured placeholder.`);
 }
@@ -22,6 +23,13 @@ if (cognitoKeys.some(key => process.env[key]) || process.env.COGNITO_CLIENT_SECR
   const domain = new URL(process.env.COGNITO_DOMAIN);
   if (domain.protocol !== 'https:' || domain.href !== domain.origin + '/') throw Error('COGNITO_DOMAIN must be an HTTPS origin.');
 }
-const child = spawn(process.execPath,['node_modules/next/dist/bin/next','start','frontend','--hostname','0.0.0.0','--port','5173'],{stdio:'inherit'});
+if (process.env.DATABASE_DRIVER !== 'sqlite') {
+  if (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes('replace-')) throw Error('Configure the shared DATABASE_URL.');
+  postgresConfig(process.env.DATABASE_URL);
+}
+if (process.env.REPLICA_ID && !/^[A-Za-z0-9_-]{1,64}$/.test(process.env.REPLICA_ID)) throw Error('Invalid REPLICA_ID.');
+const port = process.env.PORT || '5173';
+if (!/^\d+$/.test(port) || Number(port)<1024 || Number(port)>65535) throw Error('Invalid PORT.');
+const child = spawn(process.execPath,['node_modules/next/dist/bin/next','start','frontend','--hostname','0.0.0.0','--port',port],{stdio:'inherit'});
 for (const signal of ['SIGTERM','SIGINT']) process.on(signal,()=>child.kill(signal));
 child.on('exit',code=>process.exit(code ?? 1));

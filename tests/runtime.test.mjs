@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 registerHooks({resolve(specifier,context,next){if(specifier.startsWith('.')&&context.parentURL?.startsWith('file:')&&!/\.[a-z]+$/.test(specifier)){const url=new URL(specifier+'.ts',context.parentURL);if(existsSync(fileURLToPath(url)))return next(url.href,context);}return next(specifier,context);}});
 const directory=mkdtempSync(join(tmpdir(),'lean-tracker-test-'));
+process.env.DATABASE_DRIVER='sqlite';
 process.env.DATABASE_PATH=join(directory,'tracker.sqlite');
 process.env.PUBLIC_BASE_URL='https://tracker.example.test';
 process.env.TRACKER_OWNER_ID='synthetic-owner';

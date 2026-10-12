@@ -3,6 +3,8 @@ import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 export interface TrackerDatabase {
+  close?(): Promise<void>;
+  transaction?<T>(work: (tx: TrackerDatabase) => Promise<T>): Promise<T>;
   prepare(sql: string): {
     bind(...values: (SQLInputValue | undefined)[]): {
       all<T = Record<string, unknown>>(): Promise<{ results: T[] }>;

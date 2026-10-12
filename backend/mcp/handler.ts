@@ -5,6 +5,7 @@ import { numeric, textValue, validateIngredients, validateExercises, parseArray,
 export const dynamic = "force-dynamic";
 
 type ToolArgs = Record<string, unknown>;
+const protocolVersions = ['2025-03-26', '2025-06-18', '2025-11-25'];
 const ingredientSchema = { type: 'array', maxItems: 100, items: { type: 'object', properties: { name: { type: 'string' }, quantity: { type: 'string', description: 'Measured quantity or honest range, with units.' }, basis: { type: 'string', description: 'Raw/cooked, recipe portion, or estimation uncertainty.' }, calories: { type: 'number' }, protein: { type: 'number' }, carbs: { type: 'number' }, fat: { type: 'number' } }, required: ['name', 'quantity'], additionalProperties: false } };
 const exerciseSchema = { type: 'array', maxItems: 100, items: { type: 'object', properties: { name: { type: 'string' }, sets: { type: 'array', items: { type: 'object', properties: { reps: { type: 'integer' }, load_kg: { type: 'number', description: 'External lifted load in kg; do not invent bodyweight load.' } }, required: ['reps', 'load_kg'], additionalProperties: false } } }, required: ['name', 'sets'], additionalProperties: false } };
 const toolList = [
@@ -100,17 +101,22 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'MCP authentication required.' }, {status:401,headers:{'Cache-Control':'no-store','WWW-Authenticate':`Bearer resource_metadata="${process.env.PUBLIC_BASE_URL || new URL(request.url).origin}/.well-known/oauth-protected-resource"`}});
   const requestOrigin = request.headers.get('origin');
   if (requestOrigin && requestOrigin !== (process.env.PUBLIC_BASE_URL || new URL(request.url).origin)) return new Response(null,{status:403});
+  const protocolVersion = request.headers.get('MCP-Protocol-Version');
+  if (protocolVersion && !protocolVersions.includes(protocolVersion)) return Response.json({error:'Unsupported MCP protocol version.'},{status:400});
+  let body: unknown;
+  try { body = await request.json(); }
+  catch { return rpcError(null, -32700, 'Parse error'); }
   let rpcId: unknown = null;
   try {
-    const requestBody = await request.json() as { jsonrpc?: string; id?: unknown; method?: string; params?: { protocolVersion?: string; name?: string; arguments?: ToolArgs } };
-    if (!requestBody || requestBody.jsonrpc !== '2.0' || typeof requestBody.method !== 'string') return rpcError(null,-32600,'Invalid Request');
+    const requestBody = body as { jsonrpc?: string; id?: unknown; method?: string; params?: { protocolVersion?: string; name?: string; arguments?: ToolArgs } };
+    if (!requestBody || typeof requestBody !== 'object' || Array.isArray(requestBody) || requestBody.jsonrpc !== '2.0' || typeof requestBody.method !== 'string') return rpcError(null,-32600,'Invalid Request');
     rpcId = requestBody.id ?? null;
-    if (requestBody.id !== undefined && typeof requestBody.id !== 'string' && typeof requestBody.id !== 'number') return rpcError(null,-32600,'Invalid request ID');
+    if (requestBody.id !== undefined && typeof requestBody.id !== 'string' && !(typeof requestBody.id === 'number' && Number.isFinite(requestBody.id))) return rpcError(null,-32600,'Invalid request ID');
+    if (requestBody.params !== undefined && (!requestBody.params || typeof requestBody.params !== 'object' || Array.isArray(requestBody.params))) return rpcError(rpcId,-32602,'Invalid params');
     if (requestBody.id === undefined) return new Response(null,{status:202});
     if (requestBody.method === 'initialize') {
-      const versions = ['2025-03-26','2025-06-18','2025-11-25'];
       const version = requestBody.params?.protocolVersion;
-      return jsonRpc(rpcId,{protocolVersion:versions.includes(String(version))?version:'2025-11-25',capabilities:{tools:{}},serverInfo:{name:'lean-muscle-tracker',version:'2.0.0'}});
+      return jsonRpc(rpcId,{protocolVersion:protocolVersions.includes(String(version))?version:'2025-11-25',capabilities:{tools:{}},serverInfo:{name:'lean-muscle-tracker',version:'2.0.0'}});
     }
     if (requestBody.method === 'ping') return jsonRpc(rpcId,{});
     if (requestBody.method === "server/discover") return jsonRpc(rpcId, { supportedVersions: ["2025-11-25"], capabilities: { tools: {} } });

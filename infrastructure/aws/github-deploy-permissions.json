@@ -1,10 +1,13 @@
 {
   "Version": "2012-10-17",
   "Statement": [
-    {"Effect": "Allow", "Action": "ssm:SendCommand", "Resource": [
-      "arn:aws:ec2:REGION:ACCOUNT_ID:instance/INSTANCE_ID",
+    {"Effect":"Allow","Action":"ssm:SendCommand","Resource":[
+      "arn:aws:ec2:REGION:ACCOUNT_ID:instance/INSTANCE_ID_A",
+      "arn:aws:ec2:REGION:ACCOUNT_ID:instance/INSTANCE_ID_B",
       "arn:aws:ssm:REGION::document/AWS-RunShellScript"
     ]},
-    {"Effect": "Allow", "Action": "ssm:GetCommandInvocation", "Resource": "*"}
+    {"Effect":"Allow","Action":"ssm:GetCommandInvocation","Resource":"*"},
+    {"Effect":"Allow","Action":["elasticloadbalancing:RegisterTargets","elasticloadbalancing:DeregisterTargets"],"Resource":"TARGET_GROUP_ARN"},
+    {"Effect":"Allow","Action":"elasticloadbalancing:DescribeTargetHealth","Resource":"*"}
   ]
 }

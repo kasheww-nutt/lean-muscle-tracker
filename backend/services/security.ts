@@ -5,9 +5,11 @@ export function hash(value: string) { return createHash('sha256').update(value).
 // Global owner throttle: deliberately does not trust client-supplied forwarding headers.
 export async function allowAttempt(key: string, limit = 10, windowMs = 15 * 60_000) {
   const now = Date.now();
-  await env.DB.prepare('DELETE FROM auth_attempts WHERE reset_at <= ?').bind(now).run();
-  await env.DB.prepare('INSERT INTO auth_attempts (key,attempts,reset_at) VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET attempts=attempts+1').bind(key, now + windowMs).run();
-  const row = await env.DB.prepare('SELECT attempts FROM auth_attempts WHERE key=?').bind(key).first<{attempts:number}>();
+  const row = await env.DB.prepare(`INSERT INTO auth_attempts (key,attempts,reset_at) VALUES (?,1,?)
+    ON CONFLICT(key) DO UPDATE SET
+      attempts=CASE WHEN auth_attempts.reset_at<=? THEN 1 ELSE auth_attempts.attempts+1 END,
+      reset_at=CASE WHEN auth_attempts.reset_at<=? THEN excluded.reset_at ELSE auth_attempts.reset_at END
+    RETURNING attempts`).bind(key, now + windowMs, now, now).first<{attempts:number}>();
   return !!row && row.attempts <= limit;
 }
 export function origin() {
