@@ -30,6 +30,7 @@ export function openDatabase(filename: string, migrations = resolve(process.cwd(
     } catch (error) { sqlite.exec('ROLLBACK'); sqlite.close(); throw error; }
   }
   const db: TrackerDatabase = {
+    async close() { sqlite.close(); },
     prepare(sql) {
       return { bind(...values) {
         const params = values.map(v => v === undefined ? null : v);

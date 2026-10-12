@@ -2,43 +2,59 @@
 
 These are configuration instructions, not evidence of an existing deployment.
 
-## EC2 and application
+## Two EC2 instances and shared RDS PostgreSQL
 
-1. Use Ubuntu with enough memory/disk to build a Next.js image, encrypted EBS and an EC2 instance profile with AmazonSSMManagedInstanceCore. Confirm the instance appears online in Systems Manager. It needs outbound access to package registries, GitHub and SSM (internet routing or appropriate VPC endpoints).
-2. Install Git, Docker Engine and the Compose plugin using the current official Docker Ubuntu instructions. Confirm `docker compose version` works.
-3. Clone the public source into `/opt/lean-muscle-tracker`. This directory must contain package.json, docker-compose.yml and frontend/, not another nested project folder.
-4. Copy .env.example to `/opt/lean-muscle-tracker.env`, edit all values, and `chmod 600 /opt/lean-muscle-tracker.env`. Do not store this file in GitHub. The original UI accepts a four-digit PIN; use a new random PIN and independent random session/MCP/OAuth secrets.
-5. After restricting the EC2 security group as below, run:
+1. **Amazon RDS PostgreSQL:**
+   - Launch an Amazon RDS PostgreSQL 16 database instance (e.g. `db.t4g.micro` for budget-conscious workloads, or Multi-AZ for high availability).
+   - Security group: inbound TCP 5432 ONLY from the EC2 application security group. Do not make RDS publicly accessible.
+   - Enforce TLS (`rds.force_ssl=1` parameter group). Download the AWS global bundle CA certificate to `/opt/lean-muscle-tracker.ca.pem` on each EC2 instance.
+   - Note the connection string: `postgresql://<user>:<password>@<rds-endpoint>:5432/<database>`.
 
-```sh
-cd /opt/lean-muscle-tracker
-export TRACKER_ENV_FILE=/opt/lean-muscle-tracker.env
-export TRACKER_BIND_ADDRESS=0.0.0.0
-docker compose up -d --build --wait
-curl --fail http://localhost:5173/api/health
-docker compose logs --tail=50
-```
+2. **EC2 Instances (Two targets):**
+   - Launch two Ubuntu EC2 instances in different private (or public) subnets across two AZs.
+   - Attach an EC2 instance profile with `AmazonSSMManagedInstanceCore` to both instances. Confirm both appear online in Systems Manager.
+   - Install Git, Docker Engine and the Compose plugin on both instances.
+   - Clone the source into `/opt/lean-muscle-tracker` on both instances.
+   - Copy `.env.example` to `/opt/lean-muscle-tracker.env` on both instances:
+     - Set identical `DATABASE_URL`, `DATABASE_SSL_MODE=verify-full`, `TRACKER_OWNER_ID`, `TRACKER_ACCESS_CODE`, `TRACKER_SESSION_SECRET`, `PUBLIC_BASE_URL`, and OAuth/Cognito keys.
+     - Set `REPLICA_ID=ec2-a` on instance 1 and `REPLICA_ID=ec2-b` on instance 2.
+     - `chmod 600 /opt/lean-muscle-tracker.env`.
+   - Run initial migrations once before startup:
+     ```sh
+     cd /opt/lean-muscle-tracker
+     export TRACKER_ENV_FILE=/opt/lean-muscle-tracker.env
+     docker compose run --rm --no-deps tracker node scripts/migrate.mjs
+     ```
+   - Start the container:
+     ```sh
+     export TRACKER_BIND_ADDRESS=0.0.0.0
+     docker compose up -d --build --wait
+     curl --fail http://localhost:5173/api/health
+     ```
 
 ## ALB, HTTPS and DNS
 
-- Create the ALB in the same VPC using two public subnets in different availability zones.
-- ALB security group: inbound 443 (and 80 for redirect); outbound TCP 5173 to the application's security group.
-- EC2 security group: inbound TCP 5173 ONLY from the ALB security group. Use SSM; no public SSH rule is required. Do not expose SQLite/database ports or direct app access to the internet.
-- HTTP instance target group, port 5173, health path `/api/health`, success code 200. Register the EC2 instance and wait for healthy.
-- Obtain an ACM certificate in the ALB's region for a domain the user controls, complete DNS validation, create the 443 listener and forward to the target group. Redirect listener 80 to HTTPS.
-- Point the domain to the ALB and set PUBLIC_BASE_URL to that HTTPS origin. Do not use an IP address or an ALB AWS hostname with a certificate issued for a different domain.
-- Forward application routes normally. Do not enable a universal interactive ALB authentication action that would redirect MCP calls into browser login.
+- Create the ALB using two public subnets in different availability zones.
+- **ALB security group:** inbound 443 (and 80 for redirect); outbound TCP 5173 to the EC2 security group.
+- **EC2 security group:** inbound TCP 5173 ONLY from the ALB security group. Outbound TCP 5432 to the RDS security group. Outbound 443 for Systems Manager/package downloads.
+- **HTTP Target Group:** target type `instance`, port 5173, health path `/api/health`, success code 200. Register both EC2 instances (port 5173).
+- **HTTPS Listener (443):** Attach ACM certificate for your domain, forward to the target group.
+- **HTTP Listener (80):** Redirect 80 to HTTPS 443.
+- Set `PUBLIC_BASE_URL` to the public HTTPS domain. Do not enable universal interactive ALB authentication in front of `/mcp` or `/oauth/*`.
 
-One target is supported. SQLite is local to this instance; adding a second independent target would split data. Use a shared database before multi-instance scaling. The ALB currently supplies routing/TLS/health checking, not highly available storage or application failover.
+Both application targets are stateless and share the same PostgreSQL database and HMAC session secret. Requests can be routed to either healthy target without sticky sessions.
 
 ## GitHub CI/CD with OIDC and SSM
 
 1. Add GitHub OIDC provider `https://token.actions.githubusercontent.com`, audience `sts.amazonaws.com`, in IAM.
-2. Create a deployment role using the trust-policy template. Replace ACCOUNT_ID, GITHUB_OWNER and GITHUB_REPO; do not use a wildcard sub. The workflow uses GitHub environment `production`, so the trust sub is `repo:OWNER/REPO:environment:production`, not a branch-only sub.
-3. Give it the SSM permissions template after replacing REGION, ACCOUNT_ID and INSTANCE_ID. Restrict SendCommand to the one target instance and AWS-RunShellScript document. Do not attach AdministratorAccess.
-4. Create the GitHub `production` environment and restrict deployments to main. Configure repository variables `AWS_REGION`, `EC2_INSTANCE_ID`, `AWS_DEPLOY_ROLE_ARN`.
-5. Push main and wait for Test and build to succeed, then Deploy EC2. SSM checks out the verified SHA on the existing clone, builds, backs up if running, updates and checks health. Manual deployment is restricted to main as well.
-6. Capture a successful GitHub Actions run and SSM command result. The workflow is prepared but not connected/tested in AWS yet.
+2. Create a deployment role using `infrastructure/aws/github-oidc-trust.json`. Replace `ACCOUNT_ID`, `GITHUB_OWNER` and `GITHUB_REPO`.
+3. Attach policy `infrastructure/aws/github-deploy-permissions.json`. Replace `REGION`, `ACCOUNT_ID`, and list both EC2 instance IDs.
+4. In GitHub repository Settings > Secrets and variables > Actions > Variables, configure:
+   - `AWS_REGION`: target AWS region (e.g. `ap-south-1` or `us-east-1`)
+   - `EC2_INSTANCE_IDS`: comma-separated instance IDs, e.g. `i-0123456789abcdef0,i-0123456789abcdef1`
+   - `ALB_TARGET_GROUP_ARN`: full ARN of the ALB target group
+   - `AWS_DEPLOY_ROLE_ARN`: full ARN of the IAM OIDC deployment role
+5. Pushes to the deployment branch trigger automated rolling deployment via `.github/scripts/deploy_ec2.py`. SSM verifies shared configuration fingerprints, takes a pre-deployment backup, runs migrations once, and rolls instances one at a time.
 
 No AWS access keys are stored in the repository. The deployment workflow expects a public GitHub repository; private repository access needs a separately configured safe authentication mechanism on EC2.
 

@@ -61,5 +61,45 @@ if (!process.env.TEST_DATABASE_URL) {
   assert.equal(refreshed.filter(r=>r.status===200).length,1);assert.equal(refreshed.filter(r=>r.status===400).length,7);
   assert.equal((await b.db.prepare("SELECT COUNT(*) count FROM oauth_tokens WHERE kind='refresh'").bind().first()).count,1);
  });
+ test('PostgreSQL CRUD operations, owner isolation, and cross-pool consistency', async () => {
+  await a.db.prepare('INSERT INTO water_intakes (id,user_id,date,amount_ml,note) VALUES (?,?,?,?,?)').bind('water-owner-1','synthetic-owner','2026-10-12',500,'Morning glass').run();
+  await a.db.prepare('INSERT INTO water_intakes (id,user_id,date,amount_ml,note) VALUES (?,?,?,?,?)').bind('water-other-1','other-owner','2026-10-12',750,'Private glass').run();
+  await a.db.prepare('INSERT INTO body_weights (id,user_id,date,weight_kg,record_type,context) VALUES (?,?,?,?,?,?)').bind('weight-owner-1','synthetic-owner','2026-10-12',62.5,'weigh_in','morning fasting').run();
+  await a.db.prepare('INSERT INTO body_weights (id,user_id,date,weight_kg,record_type,context) VALUES (?,?,?,?,?,?)').bind('weight-other-1','other-owner','2026-10-12',80.0,'weigh_in','other user').run();
+  await a.db.prepare('INSERT INTO workouts (id,user_id,date,session,volume_kg,details,exercises) VALUES (?,?,?,?,?,?,?)').bind('workout-owner-1','synthetic-owner','2026-10-12','Legs',4500,'Heavy squats','[]').run();
+
+  const ownerWater = await b.db.prepare('SELECT id,amount_ml FROM water_intakes WHERE user_id=? ORDER BY created_at ASC').bind('synthetic-owner').all();
+  assert.deepEqual(ownerWater.results.map(r => r.id), ['water-owner-1']);
+  assert.equal(ownerWater.results[0].amount_ml, 500);
+
+  const otherWater = await b.db.prepare('SELECT id FROM water_intakes WHERE user_id=?').bind('other-owner').all();
+  assert.deepEqual(otherWater.results.map(r => r.id), ['water-other-1']);
+
+  const ownerWeight = await b.db.prepare('SELECT weight_kg FROM body_weights WHERE user_id=? AND id=?').bind('synthetic-owner', 'weight-owner-1').first();
+  assert.equal(ownerWeight.weight_kg, 62.5);
+
+  const leakedWeight = await b.db.prepare('SELECT weight_kg FROM body_weights WHERE user_id=? AND id=?').bind('synthetic-owner', 'weight-other-1').first();
+  assert.equal(leakedWeight, null);
+
+  await b.db.prepare('UPDATE water_intakes SET amount_ml=? WHERE id=? AND user_id=?').bind(650, 'water-owner-1', 'synthetic-owner').run();
+  const updated = await a.db.prepare('SELECT amount_ml FROM water_intakes WHERE id=?').bind('water-owner-1').first();
+  assert.equal(updated.amount_ml, 650);
+
+  const deleted = await a.db.prepare('DELETE FROM water_intakes WHERE id=? AND user_id=?').bind('water-owner-1', 'synthetic-owner').run();
+  assert.equal(deleted.meta.changes, 1);
+  const missing = await b.db.prepare('SELECT id FROM water_intakes WHERE id=?').bind('water-owner-1').first();
+  assert.equal(missing, null);
+ });
+ test('PostgreSQL persistence survives closing and reopening pool connections', async () => {
+  await a.db.prepare('INSERT INTO meals (id,user_id,date,name,calories,protein,carbs,fat) VALUES (?,?,?,?,?,?,?,?)').bind('persist-meal-1','synthetic-owner','2026-10-12','Persisted Meal',350,30,25,10).run();
+  const reopened = openPostgres(url.href, { autoMigrate: false });
+  await reopened.ready;
+  try {
+   const persisted = await reopened.db.prepare('SELECT name, calories, protein FROM meals WHERE id=?').bind('persist-meal-1').first();
+   assert.deepEqual(persisted, { name: 'Persisted Meal', calories: 350, protein: 30 });
+  } finally {
+   await reopened.close();
+  }
+ });
  test.after(async()=>{await env.DB.close?.();await Promise.all([a.close(),b.close()]);await admin.query('DROP SCHEMA '+schema+' CASCADE');await admin.end();});
 }

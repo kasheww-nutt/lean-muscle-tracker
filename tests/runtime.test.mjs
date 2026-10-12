@@ -78,4 +78,7 @@ test('PIN login rejects cross-origin and malformed bodies and blocks repeated gu
  await env.DB.prepare('UPDATE auth_attempts SET reset_at=0').bind().run();
  const unlocked=await access.POST(request({code:'5678'}));assert.equal(unlocked.status,200);assert.match(unlocked.headers.get('set-cookie'),/HttpOnly; Secure; SameSite=Strict/);
 });
-test.after(()=>rmSync(directory,{recursive:true,force:true}));
+test.after(async () => {
+  await env.DB.close?.();
+  rmSync(directory, { recursive: true, force: true });
+});
