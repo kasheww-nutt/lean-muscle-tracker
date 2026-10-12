@@ -77,7 +77,7 @@ def deploy(ids, sha, group):
     for instance in ids:
         print(f'Staging verified version on {instance}', flush=True)
         output = ssm(instance, prefix() + 'git fetch origin main; git checkout --detach ' + sha +
-                     '; docker compose build tracker; docker compose run --rm --no-deps tracker node scripts/config-fingerprint.mjs')
+                     '; docker compose build tracker db-tools; docker compose run --rm --no-deps tracker node scripts/config-fingerprint.mjs')
         matches = re.findall(r'^TRACKER_SHARED_CONFIG=([0-9a-f]{64})$', output, re.MULTILINE)
         if len(matches) != 1:
             raise RuntimeError('Unable to verify shared configuration on ' + instance)

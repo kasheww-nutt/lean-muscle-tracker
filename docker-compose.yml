@@ -30,7 +30,10 @@ services:
         max-size: "10m"
         max-file: "3"
   db-tools:
-    image: postgres:16-bookworm
+    image: lean-muscle-tracker-db-tools:local
+    build:
+      context: .
+      dockerfile: infrastructure/postgres/Dockerfile
     profiles: [tools]
     env_file:
       - ${TRACKER_ENV_FILE:-.env}
