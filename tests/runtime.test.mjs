@@ -45,6 +45,7 @@ test('OAuth enforces consent, exact redirects, S256, resource binding, single-us
  assert.equal((oauth.metadata(true).status),200);
  const approval=await authorize();assert.equal(approval.status,200);
  assert.equal(approval.headers.get('Referrer-Policy'),'same-origin');
+ assert.equal(approval.headers.get('Content-Security-Policy'),"default-src 'none'; form-action 'self' https://client.example.test; frame-ancestors 'none'; base-uri 'none'");
  assert.match(await approval.text(),/<meta name="referrer" content="same-origin">/);
  assert.equal((await authorize(authParams(),'POST','5678','null')).status,403);
  const bad=authParams();bad.set('redirect_uri','https://attacker.example.test');assert.equal((await authorize(bad)).status,400);

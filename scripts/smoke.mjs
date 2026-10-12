@@ -76,6 +76,7 @@ try {
     code_challenge: createHash('sha256').update(verifier).digest('base64url') });
   const approval = await fetch(base + '/oauth/authorize?' + params);
   assert.equal(approval.headers.get('referrer-policy'), 'same-origin');
+  assert.equal(approval.headers.get('content-security-policy'), "default-src 'none'; form-action 'self' https://client.example.test; frame-ancestors 'none'; base-uri 'none'");
   assert.match(await approval.text(), /<meta name="referrer" content="same-origin">/);
   const consent = await fetch(base + '/oauth/authorize?' + params, {
     method: 'POST', redirect: 'manual', headers: { Origin: publicOrigin, 'Content-Type': 'application/x-www-form-urlencoded' },
