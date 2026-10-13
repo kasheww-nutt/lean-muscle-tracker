@@ -10,6 +10,7 @@ import type {TrackerTab} from './tracker-shell';
 import { InstallTracker } from './install-tracker';
 import DailyDashboard from './daily-dashboard';
 import WeightDashboard from './weight-dashboard';
+import ManualLogger from './manual-logger';
 
 async function jsonResponse(response: Response) {
   if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Could not read the tracker response. Refresh and unlock with your access code.');
@@ -105,13 +106,14 @@ export default function Home() {
   const current = date && data?.date !== date ? null : data;
   const trackerActions = <><InstallTracker/><button className="icon-button" onClick={() => setRevision(r => r + 1)} disabled={loading} aria-label="Refresh saved data"><RefreshCw size={18} className={loading ? 'spin' : ''}/></button><button className="icon-button" onClick={toggleTheme} aria-label={dark ? 'Use light mode' : 'Use dark mode'}>{dark ? <Sun size={19}/> : <Moon size={19}/>}</button><button className="icon-button" onClick={lock} aria-label="Lock tracker"><LockKeyhole size={17}/></button><button className="icon-button widget-menu-button" onClick={()=>{setWidgets(true);setSelectedMeal(null);setSelectedWorkout(null);setWater(false);const url=new URL(window.location.href);url.searchParams.set('view','widgets');window.history.replaceState(null,'',url);}} aria-label="Custom Android widgets"><LayoutGrid size={18}/><span>Widgets</span></button></>;
   const props = {data,loading,error,originTab:tab,actions:trackerActions,onTab:chooseView,onRefresh:()=>setRevision(r=>r+1)};
-  if(widgets && tab!=='history')return <WidgetSetup {...props} onBack={()=>chooseView(tab)}/>;
-  if(selectedMeal && tab!=='history')return <MealDetails {...props} meal={current?.meals.find(m=>m.id===selectedMeal.id)||selectedMeal} onBack={()=>setSelectedMeal(null)}/>;
-  if(selectedWorkout && tab!=='history')return <WorkoutDetails {...props} workout={data?.workouts.find(w=>w.id===selectedWorkout.id)||selectedWorkout} onBack={()=>setSelectedWorkout(null)}/>;
-  if(water)return <WaterScreen {...props} data={current} date={viewDate} onBack={()=>{setWater(false);window.history.replaceState(null,'',window.location.pathname+window.location.search);}} onDate={chooseDate}/>;
-  if(tab==='nutrition')return <DailyDashboard {...props} data={current} date={viewDate} today={today} onDate={chooseDate} onOpenMeal={setSelectedMeal} onWater={()=>{setWater(true);window.history.replaceState(null,'',window.location.pathname+window.location.search+'#water');}} renderMeal={(m)=> <button className="quiet-button" onClick={()=>setSelectedMeal(m)}>{m.name}</button>}/>;
-  if(tab==='weight')return <WeightDashboard {...props} today={today}/>;
-  if(tab==='training')return <TrainingScreen {...props} onWorkout={setSelectedWorkout} onDay={next=>{chooseDate(next);chooseView('nutrition');}}/>;
-  if(tab==='analytics')return <InsightsScreen {...props} date={viewDate} onDate={next=>{chooseDate(next);chooseView('nutrition');}}/>;
-  return <><div hidden={!!selectedMeal||!!selectedWorkout||widgets}><HistoryScreen {...props} onMeal={setSelectedMeal} onWorkout={setSelectedWorkout} onDay={next=>{chooseDate(next);chooseView('nutrition');}}/></div>{widgets?<WidgetSetup {...props} onBack={()=>chooseView(tab)}/>:selectedMeal?<MealDetails {...props} meal={selectedMeal} onBack={()=>setSelectedMeal(null)}/>:selectedWorkout?<WorkoutDetails {...props} workout={selectedWorkout} onBack={()=>setSelectedWorkout(null)}/>:null}</>;
+  const withLogger=(screen:React.ReactNode)=><>{screen}<ManualLogger date={date||today} onSaved={chooseDate} onExpired={()=>{setData(null);setAccess('locked');}}/></>;
+  if(widgets && tab!=='history')return withLogger(<WidgetSetup {...props} onBack={()=>chooseView(tab)}/>);
+  if(selectedMeal && tab!=='history')return withLogger(<MealDetails {...props} meal={current?.meals.find(m=>m.id===selectedMeal.id)||selectedMeal} onBack={()=>setSelectedMeal(null)}/>);
+  if(selectedWorkout && tab!=='history')return withLogger(<WorkoutDetails {...props} workout={data?.workouts.find(w=>w.id===selectedWorkout.id)||selectedWorkout} onBack={()=>setSelectedWorkout(null)}/>);
+  if(water)return withLogger(<WaterScreen {...props} data={current} date={viewDate} onBack={()=>{setWater(false);window.history.replaceState(null,'',window.location.pathname+window.location.search);}} onDate={chooseDate}/>);
+  if(tab==='nutrition')return withLogger(<DailyDashboard {...props} data={current} date={viewDate} today={today} onDate={chooseDate} onOpenMeal={setSelectedMeal} onWater={()=>{setWater(true);window.history.replaceState(null,'',window.location.pathname+window.location.search+'#water');}} renderMeal={(m)=> <button className="quiet-button" onClick={()=>setSelectedMeal(m)}>{m.name}</button>}/>);
+  if(tab==='weight')return withLogger(<WeightDashboard {...props} today={today}/>);
+  if(tab==='training')return withLogger(<TrainingScreen {...props} onWorkout={setSelectedWorkout} onDay={next=>{chooseDate(next);chooseView('nutrition');}}/>);
+  if(tab==='analytics')return withLogger(<InsightsScreen {...props} date={viewDate} onDate={next=>{chooseDate(next);chooseView('nutrition');}}/>);
+  return withLogger(<><div hidden={!!selectedMeal||!!selectedWorkout||widgets}><HistoryScreen {...props} onMeal={setSelectedMeal} onWorkout={setSelectedWorkout} onDay={next=>{chooseDate(next);chooseView('nutrition');}}/></div>{widgets?<WidgetSetup {...props} onBack={()=>chooseView(tab)}/>:selectedMeal?<MealDetails {...props} meal={selectedMeal} onBack={()=>setSelectedMeal(null)}/>:selectedWorkout?<WorkoutDetails {...props} workout={selectedWorkout} onBack={()=>setSelectedWorkout(null)}/>:null}</>);
 }

@@ -56,9 +56,23 @@ try{
  for(const replica of [0,1])for(let i=0;i<2;i++){
   const data=await (await request(replica,'/api/dashboard?date=2026-10-12',cookies[i])).json();assert.deepEqual(data.meals.map(m=>m.name),['Synthetic account '+i]);
  }
+
+ // Manual forms and MCP share the same per-account records across replicas.
+ const manualIds=[];
+ for(let i=0;i<2;i++){
+  const id=randomUUID();manualIds.push(id);
+  const data={date:'2026-10-12',name:'Synthetic manual '+i,calories:123,protein:12,carbs:15,fat:3};
+  const post=()=>request(0,'/api/records',cookies[i],{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'meal',id,data})});
+  assert.equal((await post()).status,200);assert.equal((await post()).status,200);
+  const read=await request(1,'/api/records?date=2026-10-12',cookies[i]);const records=await read.json();assert.equal(records.meals.filter(m=>m.id===id).length,1);assert.ok(records.meals.some(m=>m.source==='manual'));
+  const rpc=await request(1,'/mcp',null,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tokens[i].access_token},body:JSON.stringify({jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'tracker_get_day',arguments:{date:'2026-10-12'}}})});
+  const result=JSON.parse((await rpc.json()).result.content[0].text);assert.ok(result.meals.some(m=>m.id===id));assert.equal(result.meals.length,2);
+  const patch=await request(1,'/api/records',cookies[i],{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'meal',id,data:{calories:150}})});assert.equal(patch.status,200);
+ }
+ const forbidden=await request(1,'/api/records',cookies[1],{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'meal',id:manualIds[0]})});assert.equal(forbidden.status,404);
  await stop(0);await start(0);
- for(let i=0;i<2;i++)assert.equal((await (await request(0,'/api/dashboard?date=2026-10-12',cookies[i])).json()).meals[0].name,'Synthetic account '+i);
- console.log('Account HTTP smoke passed: two replicas, scoped sessions/consent/MCP records, PIN disabled, invalid callback rejected and restart persistence.');
+ for(let i=0;i<2;i++)assert.deepEqual((await (await request(0,'/api/dashboard?date=2026-10-12',cookies[i])).json()).meals.map(m=>m.name).sort(),['Synthetic account '+i,'Synthetic manual '+i].sort());
+ console.log('Account HTTP smoke passed: two replicas, scoped sessions/consent/MCP records, manual/MCP interoperability, duplicate prevention, PIN disabled, invalid callback rejected and restart persistence.');
 }finally{
  await Promise.all([stop(0),stop(1)]);await env.DB.close?.();if(admin){await admin.query('DROP SCHEMA '+schema+' CASCADE');await admin.end();}rmSync(directory,{recursive:true,force:true});
 }
