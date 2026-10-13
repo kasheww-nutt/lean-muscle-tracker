@@ -33,10 +33,12 @@ jobs:
       - run: python3 -m unittest discover -s tests -p 'deploy_test.py'
       - run: npm run build
       - run: node scripts/smoke.mjs
+      - run: node scripts/accounts-smoke.mjs
       - run: npm run test:replicas
       - run: docker build -f infrastructure/docker/Dockerfile -t lean-muscle-tracker:ci .
       - run: docker run --rm --entrypoint node lean-muscle-tracker:ci scripts/smoke.mjs
       - run: docker run --rm --network host -e TEST_DATABASE_URL --entrypoint node lean-muscle-tracker:ci scripts/replicas-smoke.mjs
+      - run: docker run --rm --network host -e TEST_DATABASE_URL --entrypoint node lean-muscle-tracker:ci scripts/accounts-smoke.mjs
       - name: Verify PostgreSQL backup and restore on disposable databases
         shell: bash
         run: |

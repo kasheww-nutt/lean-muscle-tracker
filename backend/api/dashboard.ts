@@ -1,13 +1,14 @@
 import { env } from '../services/runtime';
-import { hasTrackerAccess } from '../services/access';
+import { trackerUser } from '../services/access';
 import { TARGETS, localDate, validDate, parseArray, totalMeals, weightTrend, workoutComparisons, loggingStreak, type Water, type WaterDay, type VolumeDay, type LoggingDay, type Meal, type Weight, type Workout, type NutritionDay, type Ingredient, type Exercise } from '../services/tracker';
 
 export const dynamic = 'force-dynamic';
 const noStore = { 'Cache-Control': 'no-store' };
 export async function GET(request: Request) {
   try {
-    if (!await hasTrackerAccess(request)) return Response.json({ error: 'Your access session expired. Unlock your tracker again.' }, { status: 401, headers: noStore });
-    const db = env.DB, ownerId = env.TRACKER_OWNER_ID;
+    const ownerId = await trackerUser(request);
+    if (!ownerId) return Response.json({ error: 'Your access session expired. Unlock your tracker again.' }, { status: 401, headers: noStore });
+    const db = env.DB;
     if (!db || !ownerId) return Response.json({ error: 'Tracker storage is unavailable. Your saved entries have not been changed.' }, { status: 503, headers: noStore });
     const url = new URL(request.url), today = localDate(), requested = url.searchParams.get('date');
     if (requested && !validDate(requested)) return Response.json({ error: 'Choose a valid calendar date.' }, { status: 400, headers: noStore });

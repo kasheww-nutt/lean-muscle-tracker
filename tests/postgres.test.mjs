@@ -31,7 +31,7 @@ if (!process.env.TEST_DATABASE_URL) {
  const {allowAttempt}=await import('../backend/services/security.ts');
  const oauth=await import('../backend/api/oauth.ts');
  test('Concurrent migrations produce one shared schema; records and numeric JSON types agree across pools',async()=>{
-  assert.equal((await a.db.prepare('SELECT COUNT(*) count FROM schema_migrations').bind().first()).count,1);
+  assert.equal((await a.db.prepare('SELECT COUNT(*) count FROM schema_migrations').bind().first()).count,2);
   await a.db.prepare('INSERT INTO meals (id,user_id,date,name,calories,protein,carbs,fat) VALUES (?,?,?,?,?,?,?,?)').bind('synthetic-shared','synthetic-owner','2026-10-12','Literal ? rowid meal',100,5,10,4).run();
   const row=await b.db.prepare('SELECT name,SUM(calories) calories,COUNT(*) count FROM meals GROUP BY name').bind().first();
   assert.deepEqual(row,{name:'Literal ? rowid meal',calories:100,count:1});

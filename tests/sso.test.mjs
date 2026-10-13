@@ -20,3 +20,10 @@ test('SSO validates signed Cognito identity, owner, nonce, audience, token use a
  const forged=jwt().split('.');forged[1]=Buffer.from(JSON.stringify({...payload,sub:'forged'})).toString('base64url');await assert.rejects(()=>verifyIdentity(forged.join('.'),'synthetic-nonce',verifier));
  assert.equal((await callback(new Request('https://tracker.example.test/sso/callback?state=forged&code=forged'))).status,401);
 });
+test('Account-mode SSO verifies any pool user only with a matching nonce and verified email',async()=>{
+ process.env.TRACKER_AUTH_MODE='cognito';
+ try {
+  assert.equal((await verifyIdentity(jwt({sub:'other-account',email_verified:true}),'synthetic-nonce',verifier)).sub,'other-account');
+  for(const overrides of [{sub:'other-account',email_verified:false},{sub:'other-account'},{sub:'other-account',email_verified:true,nonce:'wrong'},{sub:'other-account',email_verified:true,aud:'other-client'},{sub:'other-account',email_verified:true,exp:0}]) await assert.rejects(()=>verifyIdentity(jwt(overrides),'synthetic-nonce',verifier));
+ } finally {delete process.env.TRACKER_AUTH_MODE;}
+});

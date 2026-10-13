@@ -1,12 +1,13 @@
 import { env } from '../services/runtime';
-import { hasTrackerAccess } from '../services/access';
+import { trackerUser } from '../services/access';
 import { parseArray, validDate, type Meal, type Workout, type Water, type Weight, type Ingredient, type Exercise } from '../services/tracker';
 export const dynamic = 'force-dynamic';
 const headers = {'Cache-Control':'no-store'};
 export async function GET(request: Request) {
-  if (!await hasTrackerAccess(request)) return Response.json({error:'Unlock your tracker again.'},{status:401,headers});
+  const owner = await trackerUser(request);
+  if (!owner) return Response.json({error:'Unlock your tracker again.'},{status:401,headers});
   try {
-    const db=env.DB, owner=env.TRACKER_OWNER_ID;
+    const db=env.DB;
     if(!db||!owner) return Response.json({error:'Storage unavailable.'},{status:503,headers});
     const url=new URL(request.url), before=url.searchParams.get('before'), q=(url.searchParams.get('q')||'').trim().slice(0,120), type=url.searchParams.get('type')||'all';
     if(before&&!validDate(before)) return Response.json({error:'Invalid history date.'},{status:400,headers});

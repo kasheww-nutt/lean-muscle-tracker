@@ -1,4 +1,5 @@
 import { env } from "./runtime";
+import { accountsEnabled } from "./accounts";
 
 const COOKIE_NAME = "lean_tracker_access";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
@@ -19,23 +20,36 @@ function cookieValue(request: Request) {
   return "";
 }
 
-export async function hasTrackerAccess(request: Request) {
-  const [expiry, signatureHex, extra] = cookieValue(request).split(".");
-  if (!expiry || !signatureHex || extra || !/^\d{13}$/.test(expiry) || !/^[a-f0-9]{64}$/.test(signatureHex)) return false;
-  if (Number(expiry) <= Date.now()) return false;
-  const signature = Uint8Array.from(signatureHex.match(/.{2}/g) ?? [], (pair) => Number.parseInt(pair, 16));
+export async function trackerUser(request: Request): Promise<string | null> {
+  const value = cookieValue(request);
   try {
-    return await crypto.subtle.verify("HMAC", await hmacKey(), signature, encoder.encode(expiry));
-  } catch {
-    return false;
-  }
+    const parts = value.split('.');
+    if (parts.length === 3 && parts[0] === 'v2') {
+      const [, payload, signatureHex] = parts;
+      if (payload.length > 2048 || !/^[a-f0-9]{64}$/.test(signatureHex)) return null;
+      const signature = Uint8Array.from(signatureHex.match(/.{2}/g)!, p => parseInt(p,16));
+      if (!await crypto.subtle.verify('HMAC',await hmacKey(),signature,encoder.encode('v2.'+payload))) return null;
+      const claims = JSON.parse(Buffer.from(payload,'base64url').toString()) as {userId?:unknown;expiry?:unknown};
+      if (typeof claims.userId !== 'string' || typeof claims.expiry !== 'number' || claims.expiry <= Date.now()) return null;
+      const row = await env.DB.prepare('SELECT user_id FROM tracker_accounts WHERE user_id=?').bind(claims.userId).first();
+      return row ? claims.userId : null;
+    }
+    // Existing owner cookies work during rollout, but never unlock account mode.
+    if (accountsEnabled()) return null;
+    const [expiry, signatureHex, extra] = parts;
+    if (!expiry || !signatureHex || extra || !/^\d{13}$/.test(expiry) || !/^[a-f0-9]{64}$/.test(signatureHex) || Number(expiry) <= Date.now()) return null;
+    const signature = Uint8Array.from(signatureHex.match(/.{2}/g)!, p=>parseInt(p,16));
+    return await crypto.subtle.verify('HMAC',await hmacKey(),signature,encoder.encode(expiry)) ? env.TRACKER_OWNER_ID || null : null;
+  } catch { return null; }
 }
+export async function hasTrackerAccess(request: Request) { return !!await trackerUser(request); }
 
-export async function createTrackerSessionCookie() {
-  const expiry = String(Date.now() + SESSION_TTL_SECONDS * 1000);
-  const signature = new Uint8Array(await crypto.subtle.sign("HMAC", await hmacKey(), encoder.encode(expiry)));
-  const signatureHex = Array.from(signature, (byte) => byte.toString(16).padStart(2, "0")).join("");
-  return `${COOKIE_NAME}=${expiry}.${signatureHex}; Path=/; Max-Age=${SESSION_TTL_SECONDS}; HttpOnly; Secure; SameSite=Strict`;
+export async function createTrackerSessionCookie(userId?: string) {
+  const expiry = Date.now() + SESSION_TTL_SECONDS * 1000;
+  const payload = userId ? 'v2.' + Buffer.from(JSON.stringify({userId,expiry})).toString('base64url') : String(expiry);
+  const signature = new Uint8Array(await crypto.subtle.sign('HMAC',await hmacKey(),encoder.encode(payload)));
+  const signatureHex = Array.from(signature,b=>b.toString(16).padStart(2,'0')).join('');
+  return `${COOKIE_NAME}=${payload}.${signatureHex}; Path=/; Max-Age=${SESSION_TTL_SECONDS}; HttpOnly; Secure; SameSite=${userId ? 'Lax' : 'Strict'}`;
 }
 
 export function clearedTrackerSessionCookie() {

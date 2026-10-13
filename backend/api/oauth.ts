@@ -1,7 +1,8 @@
-import { randomBytes, createHash } from 'node:crypto';
+import { randomBytes, createHash, createHmac } from 'node:crypto';
 import { env } from '../services/runtime';
 import { allowAttempt, hash, origin } from '../services/security';
-import { safeCodeEqual, sameOrigin } from '../services/access';
+import { safeCodeEqual, sameOrigin, trackerUser } from '../services/access';
+import { accountsEnabled } from '../services/accounts';
 import type { TrackerDatabase } from '../services/database';
 
 const headers = { 'Cache-Control': 'no-store', 'Pragma':'no-cache' };
@@ -35,34 +36,46 @@ function validate(params: URLSearchParams) {
   return {base,client};
 }
 const escape = (s: string) => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
+function consentProof(request: Request) {
+  const url = new URL(request.url);
+  return createHmac('sha256',env.TRACKER_SESSION_SECRET!).update(origin()+url.pathname+url.search).update('\n').update(request.headers.get('cookie') || '').digest('hex');
+}
 export async function authorize(request: Request) {
   try {
     const url = new URL(request.url);
     const {client} = validate(url.searchParams);
+    const userId = accountsEnabled() ? await trackerUser(request) : env.TRACKER_OWNER_ID;
+    if (accountsEnabled() && !userId) {
+      if(request.method !== 'GET') return fail('access_denied',401);
+      return new Response(null,{status:303,headers:{...headers,Location:origin()+'/sso/login?next='+encodeURIComponent(url.pathname+url.search)}});
+    }
     if (request.method === 'GET') {
       // Browsers can enforce form-action on the post-consent redirect too.
       const callbackOrigin = new URL(url.searchParams.get('redirect_uri')!).origin;
-      return new Response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="referrer" content="same-origin"><meta name="viewport" content="width=device-width"><title>Connect Lean Muscle Tracker</title><body><h1>Connect Lean Muscle Tracker</h1><p>This grants client <strong>${escape(client)}</strong> access to read, add, update and remove your fitness records.</p><p>Approve only if you started this connection.</p><form method="post"><label>Tracker access code <input name="code" type="password" autocomplete="current-password" required maxlength="64"></label><button type="submit">Approve connection</button></form></body></html>`, {headers:{...headers,'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':`default-src 'none'; form-action 'self' ${callbackOrigin}; frame-ancestors 'none'; base-uri 'none'`,'Referrer-Policy':'same-origin'}});
+      return new Response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="referrer" content="same-origin"><meta name="viewport" content="width=device-width"><title>Connect Lean Muscle Tracker</title><body><h1>Connect Lean Muscle Tracker</h1><p>This grants client <strong>${escape(client)}</strong> access to read, add, update and remove your fitness records.</p><p>Approve only if you started this connection.</p><form method="post">${accountsEnabled()?`<input type="hidden" name="consent" value="${consentProof(request)}"><p>Only the signed-in account’s records will be connected.</p>`:`<label>Tracker access code <input name="code" type="password" autocomplete="current-password" required maxlength="64"></label>`}<button type="submit">Approve connection</button></form></body></html>`, {headers:{...headers,'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':`default-src 'none'; form-action 'self' ${callbackOrigin}; frame-ancestors 'none'; base-uri 'none'`,'Referrer-Policy':'same-origin'}});
     }
     if (!sameOrigin(request)) return fail('access_denied',403);
-    if (!await allowAttempt('owner-login')) return fail('slow_down',429);
+    if (!await allowAttempt(accountsEnabled()?'consent:'+userId:'owner-login')) return fail('slow_down',429);
     const form = await request.formData();
     const code = String(form.get('code') || '').trim();
-    if (!env.TRACKER_ACCESS_CODE || !safeCodeEqual(code,env.TRACKER_ACCESS_CODE)) return fail('access_denied',401);
+    if (accountsEnabled()) {
+      if (!safeCodeEqual(String(form.get('consent') || ''),consentProof(request))) return fail('access_denied',403);
+    } else if (!env.TRACKER_ACCESS_CODE || !safeCodeEqual(code,env.TRACKER_ACCESS_CODE)) return fail('access_denied',401);
+    if (!userId) return fail('access_denied',401);
     const token = opaque();
     await env.DB.prepare('DELETE FROM oauth_codes WHERE expires_at<=?').bind(Date.now()).run();
-    await env.DB.prepare('INSERT INTO oauth_codes (code_hash,client_id,redirect_uri,challenge,resource,expires_at) VALUES (?,?,?,?,?,?)').bind(hash(token),client,url.searchParams.get('redirect_uri'),url.searchParams.get('code_challenge'),url.searchParams.get('resource'),Date.now()+300_000).run();
+    await env.DB.prepare('INSERT INTO oauth_codes (code_hash,client_id,redirect_uri,challenge,resource,expires_at,user_id) VALUES (?,?,?,?,?,?,?)').bind(hash(token),client,url.searchParams.get('redirect_uri'),url.searchParams.get('code_challenge'),url.searchParams.get('resource'),Date.now()+300_000,userId).run();
     const redirect = new URL(url.searchParams.get('redirect_uri')!);
     redirect.searchParams.set('code',token);
     if (url.searchParams.has('state')) redirect.searchParams.set('state',url.searchParams.get('state')!);
     return new Response(null,{status:303,headers:{...headers,Location:redirect.href}});
   } catch { return fail('invalid_request'); }
 }
-async function issue(client: string, resource: string, db: TrackerDatabase) {
+async function issue(client: string, resource: string, db: TrackerDatabase, userId: string) {
   const access = opaque(), refresh = opaque();
   await db.prepare('DELETE FROM oauth_tokens WHERE expires_at<=?').bind(Date.now()).run();
   for (const [token,kind,ttl] of [[access,'access',3600_000],[refresh,'refresh',30*86400_000]] as const) {
-    await db.prepare('INSERT INTO oauth_tokens (token_hash,client_id,kind,resource,expires_at) VALUES (?,?,?,?,?)').bind(hash(token),client,kind,resource,Date.now()+ttl).run();
+    await db.prepare('INSERT INTO oauth_tokens (token_hash,client_id,kind,resource,expires_at,user_id) VALUES (?,?,?,?,?,?)').bind(hash(token),client,kind,resource,Date.now()+ttl,userId).run();
   }
   return Response.json({access_token:access,refresh_token:refresh,token_type:'Bearer',expires_in:3600,scope:'tracker'}, {headers});
 }
@@ -89,17 +102,21 @@ export async function token(request: Request, revoke = false) {
     if (body.get('grant_type') === 'refresh_token') {
       const value = hash(body.get('refresh_token') || '');
       // DELETE RETURNING consumes the token atomically, preventing replay across workers.
-      const row = await db.prepare("DELETE FROM oauth_tokens WHERE token_hash=? AND client_id=? AND kind='refresh' AND resource=? AND expires_at>? RETURNING resource").bind(value,client,`${base}/mcp`,Date.now()).first<{resource:string}>();
+      const row = await db.prepare("DELETE FROM oauth_tokens WHERE token_hash=? AND client_id=? AND kind='refresh' AND resource=? AND expires_at>? RETURNING resource,user_id").bind(value,client,`${base}/mcp`,Date.now()).first<{resource:string;user_id:string|null}>();
       if (!row) return fail('invalid_grant');
-      return issue(client,row.resource,db);
+      const userId = row.user_id || env.TRACKER_OWNER_ID;
+      if (!userId) return fail('invalid_grant');
+      return issue(client,row.resource,db,userId);
     }
     if (body.get('grant_type') !== 'authorization_code') return fail('unsupported_grant_type');
     const verifier = body.get('code_verifier') || '';
     if (!/^[A-Za-z0-9._~-]{43,128}$/.test(verifier)) return fail('invalid_grant');
     const challenge = createHash('sha256').update(verifier).digest('base64url');
-    const row = await db.prepare('DELETE FROM oauth_codes WHERE code_hash=? AND client_id=? AND redirect_uri=? AND challenge=? AND resource=? AND expires_at>? RETURNING resource').bind(hash(body.get('code') || ''),client,body.get('redirect_uri'),challenge,`${base}/mcp`,Date.now()).first<{resource:string}>();
+    const row = await db.prepare('DELETE FROM oauth_codes WHERE code_hash=? AND client_id=? AND redirect_uri=? AND challenge=? AND resource=? AND expires_at>? RETURNING resource,user_id').bind(hash(body.get('code') || ''),client,body.get('redirect_uri'),challenge,`${base}/mcp`,Date.now()).first<{resource:string;user_id:string|null}>();
     if (!row) return fail('invalid_grant');
-    return issue(client,row.resource,db);
+    const userId = row.user_id || env.TRACKER_OWNER_ID;
+      if (!userId) return fail('invalid_grant');
+      return issue(client,row.resource,db,userId);
     };
     return env.DB.transaction ? await env.DB.transaction(operation) : await operation(env.DB);
   } catch { return fail('invalid_request'); }

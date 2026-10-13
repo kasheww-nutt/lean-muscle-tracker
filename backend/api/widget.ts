@@ -1,23 +1,26 @@
 import { env } from '../services/runtime';
-import { hasTrackerAccess, sameOrigin } from '../services/access';
+import { trackerUser, sameOrigin } from '../services/access';
 import { localDate, loggingStreak, type LoggingDay } from '../services/tracker';
 import { newWidgetToken, widgetTokenHash, widgetTexts } from '../services/widget';
 export const dynamic='force-dynamic';
 const headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer'};
 export async function POST(request:Request){
- if(!sameOrigin(request)||!await hasTrackerAccess(request))return Response.json({error:'Unlock the tracker first.'},{status:401,headers});
- try{const token=newWidgetToken(),expires=Date.now()+90*86400000;await env.DB!.prepare('INSERT INTO widget_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET token_hash=excluded.token_hash, expires_at=excluded.expires_at').bind(env.TRACKER_OWNER_ID,await widgetTokenHash(token),expires).run();return Response.json({token,expiresAt:new Date(expires).toISOString()},{headers});}catch{return Response.json({error:'Could not create a widget link.'},{status:500,headers});}
+ const owner=await trackerUser(request);
+ if(!sameOrigin(request)||!owner)return Response.json({error:'Unlock the tracker first.'},{status:401,headers});
+ try{const token=newWidgetToken(),expires=Date.now()+90*86400000;await env.DB!.prepare('INSERT INTO widget_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET token_hash=excluded.token_hash, expires_at=excluded.expires_at').bind(owner,await widgetTokenHash(token),expires).run();return Response.json({token,expiresAt:new Date(expires).toISOString()},{headers});}catch{return Response.json({error:'Could not create a widget link.'},{status:500,headers});}
 }
 export async function DELETE(request:Request){
- if(!sameOrigin(request)||!await hasTrackerAccess(request))return Response.json({error:'Unlock the tracker first.'},{status:401,headers});
- try{await env.DB!.prepare('DELETE FROM widget_tokens WHERE user_id=?').bind(env.TRACKER_OWNER_ID).run();return Response.json({revoked:true},{headers});}catch{return Response.json({error:'Could not revoke widget access.'},{status:500,headers});}
+ const owner=await trackerUser(request);
+ if(!sameOrigin(request)||!owner)return Response.json({error:'Unlock the tracker first.'},{status:401,headers});
+ try{await env.DB!.prepare('DELETE FROM widget_tokens WHERE user_id=?').bind(owner).run();return Response.json({revoked:true},{headers});}catch{return Response.json({error:'Could not revoke widget access.'},{status:500,headers});}
 }
 export async function GET(request:Request){
  try{const url=new URL(request.url),key=url.searchParams.get('key');
- if(!key){if(!await hasTrackerAccess(request))return Response.json({error:'Widget authorization required.'},{status:401,headers});const row=await env.DB!.prepare('SELECT expires_at FROM widget_tokens WHERE user_id=?').bind(env.TRACKER_OWNER_ID).first<{expires_at:number}>();return Response.json({enabled:!!row&&row.expires_at>Date.now(),expiresAt:row?new Date(row.expires_at).toISOString():null},{headers});}
+ if(!key){const owner=await trackerUser(request);if(!owner)return Response.json({error:'Widget authorization required.'},{status:401,headers});const row=await env.DB!.prepare('SELECT expires_at FROM widget_tokens WHERE user_id=?').bind(owner).first<{expires_at:number}>();return Response.json({enabled:!!row&&row.expires_at>Date.now(),expiresAt:row?new Date(row.expires_at).toISOString():null},{headers});}
  if(!/^[a-f0-9]{64}$/.test(key))return Response.json({error:'Invalid widget link.'},{status:401,headers});
- const owner=env.TRACKER_OWNER_ID;const allowed=await env.DB!.prepare('SELECT expires_at FROM widget_tokens WHERE user_id=? AND token_hash=?').bind(owner,await widgetTokenHash(key)).first<{expires_at:number}>();
+ const allowed=await env.DB!.prepare('SELECT user_id,expires_at FROM widget_tokens WHERE token_hash=?').bind(await widgetTokenHash(key)).first<{user_id:string;expires_at:number}>();
  if(!allowed||allowed.expires_at<=Date.now())return Response.json({error:'Widget link expired or revoked.'},{status:401,headers});
+ const owner=allowed.user_id;
  const today=localDate();const latest=await env.DB!.prepare('SELECT MAX(date) AS date FROM meals WHERE user_id=? AND is_test=0 AND date<=?').bind(owner,today).first<{date:string|null}>();const date=url.searchParams.get('day')==='latest'?(latest?.date||today):today;
  const [food,water,weight,workout,activities]=await Promise.all([
  env.DB!.prepare('SELECT COUNT(*) AS count, SUM(calories) AS calories, SUM(protein) AS protein FROM meals WHERE user_id=? AND date=? AND is_test=0').bind(owner,date).first<{count:number;calories:number|null;protein:number|null}>(),

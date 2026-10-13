@@ -13,7 +13,7 @@ import WeightDashboard from './weight-dashboard';
 
 async function jsonResponse(response: Response) {
   if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Could not read the tracker response. Refresh and unlock with your access code.');
-  return response.json() as Promise<Partial<Dashboard> & { error?: string; authorized?: boolean }>;
+  return response.json() as Promise<Partial<Dashboard> & { error?: string; authorized?: boolean; authMode?: string; ssoAvailable?: boolean; logoutUrl?: string }>;
 }
 
 export default function Home() {
@@ -25,6 +25,7 @@ export default function Home() {
   const [revision, setRevision] = useState(0);
   const [dark, setDark] = useState(false);
   const [access, setAccess] = useState<'checking' | 'locked' | 'unlocked'>('checking');
+  const [accountMode,setAccountMode]=useState(false);
   const [code, setCode] = useState('');
   const [accessError, setAccessError] = useState('');
   const [unlocking, setUnlocking] = useState(false);
@@ -45,7 +46,7 @@ export default function Home() {
     const controller = new AbortController();
     fetch('/api/access', { cache: 'no-store', signal: controller.signal }).then(async r => {
       const body = await jsonResponse(r); if (!r.ok) throw new Error(body.error || 'Could not check access.'); return body;
-    }).then(body => setAccess(body.authorized ? 'unlocked' : 'locked')).catch(e => {
+    }).then(body => {setAccountMode(body.authMode==='cognito');setAccess(body.authorized ? 'unlocked' : 'locked');}).catch(e => {
       if (controller.signal.aborted) return; setAccess('locked'); setAccessError(e.message || 'Could not check access.');
     });
     return () => controller.abort();
@@ -96,10 +97,10 @@ export default function Home() {
     } catch (e) { setAccessError(e instanceof Error ? e.message : 'Could not unlock.'); } finally { setUnlocking(false); }
   }
   async function lock() {
-    try { const r = await fetch('/api/access', { method: 'DELETE', cache: 'no-store' }); if (!r.ok) throw new Error('Could not lock. Try again.'); setData(null); setAccess('locked'); setSelectedMeal(null);setSelectedWorkout(null);setWater(false);setWidgets(false); } catch (e) { setError(e instanceof Error ? e.message : 'Could not lock.'); }
+    try { const r = await fetch('/api/access', { method: 'DELETE', cache: 'no-store' }); if (!r.ok) throw new Error('Could not lock. Try again.'); const body=await jsonResponse(r); if(accountMode && body.logoutUrl){window.location.assign(body.logoutUrl);return;} setData(null); setAccess('locked'); setSelectedMeal(null);setSelectedWorkout(null);setWater(false);setWidgets(false); } catch (e) { setError(e instanceof Error ? e.message : 'Could not lock.'); }
   }
 
-  if (access !== 'unlocked') return <AccessScreen checking={access === 'checking'} code={code} onCode={setCode} onSubmit={unlock} error={accessError} busy={unlocking} dark={dark} onTheme={toggleTheme}/>;
+  if (access !== 'unlocked') return <AccessScreen accountMode={accountMode} checking={access === 'checking'} code={code} onCode={setCode} onSubmit={unlock} error={accessError} busy={unlocking} dark={dark} onTheme={toggleTheme}/>;
   const today = data?.today || localDate(), viewDate = date || data?.date || today;
   const current = date && data?.date !== date ? null : data;
   const trackerActions = <><InstallTracker/><button className="icon-button" onClick={() => setRevision(r => r + 1)} disabled={loading} aria-label="Refresh saved data"><RefreshCw size={18} className={loading ? 'spin' : ''}/></button><button className="icon-button" onClick={toggleTheme} aria-label={dark ? 'Use light mode' : 'Use dark mode'}>{dark ? <Sun size={19}/> : <Moon size={19}/>}</button><button className="icon-button" onClick={lock} aria-label="Lock tracker"><LockKeyhole size={17}/></button><button className="icon-button widget-menu-button" onClick={()=>{setWidgets(true);setSelectedMeal(null);setSelectedWorkout(null);setWater(false);const url=new URL(window.location.href);url.searchParams.set('view','widgets');window.history.replaceState(null,'',url);}} aria-label="Custom Android widgets"><LayoutGrid size={18}/><span>Widgets</span></button></>;

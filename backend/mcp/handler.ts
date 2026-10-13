@@ -128,7 +128,6 @@ export async function POST(request: Request) {
     if (!args || typeof args !== 'object' || Array.isArray(args)) return rpcError(rpcId,-32602,'Invalid arguments');
     const name = requestBody.params?.name;
     const userId = user.userId;
-    if (!env.TRACKER_OWNER_ID || env.TRACKER_OWNER_ID !== userId) throw new Error('Only the tracker owner can access these records.');
 
     if (name === 'tracker_log_water') {
       const date = dateArg(args), amount = numeric(args.amount_ml, 'amount_ml', 0.01, 20000), id = crypto.randomUUID();

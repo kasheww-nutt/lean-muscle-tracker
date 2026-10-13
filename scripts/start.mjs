@@ -17,8 +17,9 @@ if (process.env.OAUTH_CLIENT_ID) {
   const redirects = (process.env.OAUTH_REDIRECT_URIS || '').split(',').filter(Boolean);
   if (!redirects.length || redirects.some(r => new URL(r).protocol !== 'https:' || new URL(r).hash)) throw Error('Configure exact HTTPS OAuth redirect URIs.');
 }
+if (process.env.TRACKER_AUTH_MODE && !['pin','cognito'].includes(process.env.TRACKER_AUTH_MODE)) throw Error('TRACKER_AUTH_MODE must be pin or cognito.');
 const cognitoKeys = ['COGNITO_USER_POOL_ID','COGNITO_CLIENT_ID','COGNITO_DOMAIN','COGNITO_OWNER_SUB'];
-if (cognitoKeys.some(key => process.env[key]) || process.env.COGNITO_CLIENT_SECRET) {
+if (process.env.TRACKER_AUTH_MODE === 'cognito' || cognitoKeys.some(key => process.env[key]) || process.env.COGNITO_CLIENT_SECRET) {
   if (cognitoKeys.some(key => !process.env[key])) throw Error('Complete the Cognito pool, client, domain and owner configuration.');
   const domain = new URL(process.env.COGNITO_DOMAIN);
   if (domain.protocol !== 'https:' || domain.href !== domain.origin + '/') throw Error('COGNITO_DOMAIN must be an HTTPS origin.');
