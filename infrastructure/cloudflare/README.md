@@ -131,6 +131,8 @@ Repository/environment secrets:
 
 The workflow validates, builds, updates private replica secrets, applies migrations, deploys B, verifies B through the public router, deploys A, verifies A, then deploys/verifies the router. Migration compatibility with the still-running previous version is required. There is no automatic database rollback. The role grants/security SQL must be updated if future migrations add tables.
 
+Alternative first deployment without local CLI: after initializing SQL and setting all variables/secrets above, enable `CLOUDFLARE_DEPLOY_ENABLED`, then GitHub → Actions → Cloudflare verify and deploy → Run workflow on `main`, with **initial_setup** checked. This creates the private replicas, loads their secrets, runs migrations and publishes the router. Subsequent runs must leave initial_setup unchecked. Creating or editing secrets does not itself trigger a push deployment.
+
 The reusable deployment script needs both database URLs in the caller's private environment. `--initial` is only for a deliberate first deployment; normal updates require production readiness first.
 
 ## 9. Demonstrate traffic distribution and failure handling

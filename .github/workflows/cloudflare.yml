@@ -4,6 +4,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      initial_setup:
+        description: First deployment only (create private replicas before their secrets exist)
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -12,6 +17,20 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-ci-password
+          POSTGRES_DB: tracker_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d tracker_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:synthetic-ci-password@127.0.0.1:5432/tracker_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -47,6 +66,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build:cloudflare
+      - name: Create private services for first setup
+        if: github.event_name == 'workflow_dispatch' && inputs.initial_setup
+        run: |
+          npx wrangler deploy -c infrastructure/cloudflare/wrangler.a.jsonc
+          npx wrangler deploy -c infrastructure/cloudflare/wrangler.b.jsonc
       - name: Update private replica secrets
         shell: bash
         run: |
@@ -54,4 +78,14 @@ jobs:
           for replica in a b; do
             python3 -c 'import json,os; print(json.dumps({k:os.environ[k] for k in ["DATABASE_URL","TRACKER_SESSION_SECRET"]}))' | npx wrangler secret bulk -c "infrastructure/cloudflare/wrangler.$replica.jsonc"
           done
-      - run: npm run deploy:cloudflare
+      - name: Deploy both replicas and the router
+        env:
+          INITIAL_SETUP: ${{ github.event_name == 'workflow_dispatch' && inputs.initial_setup }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$INITIAL_SETUP" = "true" ]; then
+            npm run deploy:cloudflare -- --initial
+          else
+            npm run deploy:cloudflare
+          fi
