@@ -1,0 +1,57 @@
+name: Cloudflare verify and deploy
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cloudflare-production
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx tsc --project tsconfig.cloudflare.json --noEmit --incremental false
+      - run: npm test
+      - run: npm run build:cloudflare
+      - run: npm run test:cloudflare-runtime
+      - run: npx wrangler deploy --dry-run -c infrastructure/cloudflare/wrangler.a.jsonc
+      - run: npx wrangler deploy --dry-run -c infrastructure/cloudflare/wrangler.router.jsonc
+      - run: npm run check:public
+  deploy:
+    needs: verify
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.CLOUDFLARE_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      DATABASE_URL: ${{ secrets.TRACKER_DATABASE_URL }}
+      DATABASE_MIGRATION_URL: ${{ secrets.TRACKER_DATABASE_MIGRATION_URL }}
+      TRACKER_SESSION_SECRET: ${{ secrets.TRACKER_SESSION_SECRET }}
+      DATABASE_SSL_MODE: verify-full
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run build:cloudflare
+      - name: Update private replica secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for replica in a b; do
+            python3 -c 'import json,os; print(json.dumps({k:os.environ[k] for k in ["DATABASE_URL","TRACKER_SESSION_SECRET"]}))' | npx wrangler secret bulk -c "infrastructure/cloudflare/wrangler.$replica.jsonc"
+          done
+      - run: npm run deploy:cloudflare

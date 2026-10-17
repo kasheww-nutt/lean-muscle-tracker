@@ -47,7 +47,7 @@ export default function Home() {
     const controller = new AbortController();
     fetch('/api/access', { cache: 'no-store', signal: controller.signal }).then(async r => {
       const body = await jsonResponse(r); if (!r.ok) throw new Error(body.error || 'Could not check access.'); return body;
-    }).then(body => {setAccountMode(body.authMode==='cognito');setAccess(body.authorized ? 'unlocked' : 'locked');}).catch(e => {
+    }).then(body => {setAccountMode(body.authMode==='cognito'||body.authMode==='supabase');setAccess(body.authorized ? 'unlocked' : 'locked');}).catch(e => {
       if (controller.signal.aborted) return; setAccess('locked'); setAccessError(e.message || 'Could not check access.');
     });
     return () => controller.abort();

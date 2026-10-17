@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
 import assert from 'node:assert/strict';
 const root=resolve(import.meta.dirname,'..');
-const skip=new Set(['node_modules','.git','dist','.wrangler','.next']);
+const skip=new Set(['node_modules','.git','dist','.wrangler','.next','.cloudflare']);
 const sensitiveName=/^(?:\.dev\.vars(?:\..*)?|\.env(?:\..*)?)$/;
 const patterns=[/gh[pousr]_[A-Za-z0-9]{30,}/,/github_pat_[A-Za-z0-9_]{30,}/,/AKIA[0-9A-Z]{16}/,/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,/appgprj_[a-f0-9]{20,}/,new RegExp(['sweet','goby','3200'].join('-')),/[A-Za-z0-9._%+-]+@gmail\.com/i];
 let count=0;

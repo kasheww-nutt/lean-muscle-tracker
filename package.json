@@ -15,7 +15,13 @@
     "test:production": "node scripts/smoke.mjs",
     "db:migrate": "node scripts/migrate.mjs",
     "test:postgres": "node --experimental-strip-types --test tests/postgres.test.mjs",
-    "test:replicas": "node scripts/replicas-smoke.mjs"
+    "test:replicas": "node scripts/replicas-smoke.mjs",
+    "build:cloudflare": "node scripts/cloudflare-build.mjs",
+    "preview:cloudflare": "wrangler dev -c infrastructure/cloudflare/wrangler.router.jsonc -c infrastructure/cloudflare/wrangler.a.jsonc -c infrastructure/cloudflare/wrangler.b.jsonc",
+    "deploy:cloudflare": "node scripts/cloudflare-deploy.mjs",
+    "typecheck:cloudflare": "tsc --project tsconfig.cloudflare.json --noEmit --incremental false",
+    "db:cloudflare-setup": "node scripts/cloudflare-schema.mjs",
+    "test:cloudflare-runtime": "node scripts/cloudflare-runtime-smoke.mjs"
   },
   "dependencies": {
     "aws-jwt-verify": "^5.2.1",
@@ -34,7 +40,8 @@
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "tailwindcss": "4.2.1",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "wrangler": "4.151.1"
   },
   "type": "module",
   "description": "Private nutrition, weight, training and hydration tracker with a lavender dashboard and MCP tools."

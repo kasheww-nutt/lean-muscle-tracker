@@ -1,0 +1,5 @@
+{
+  "extends":"./tsconfig.json",
+  "include":["backend/**/*.ts","infrastructure/cloudflare/**/*.ts"],
+  "exclude":["node_modules",".cloudflare","infrastructure/cloudflare/sqlite-disabled.ts"]
+}

@@ -1,0 +1,13 @@
+{
+  "$schema":"../../node_modules/wrangler/config-schema.json",
+  "name":"tracker-router",
+  "main":"router.ts",
+  "compatibility_date":"2026-10-17",
+  "workers_dev":false,
+  "preview_urls":false,
+  "assets":{"directory":"../../.cloudflare/frontend/out","binding":"ASSETS","run_worker_first":true},
+  "services":[{"binding":"BACKEND_A","service":"tracker-a"},{"binding":"BACKEND_B","service":"tracker-b"}],
+  "vars":{"PUBLIC_BASE_URL":"https://tracker.kashewwnutt.tech"},
+  "routes":[{"pattern":"tracker.kashewwnutt.tech","custom_domain":true}],
+  "observability":{"enabled":true}
+}

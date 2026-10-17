@@ -1,9 +1,5 @@
 name: Deploy EC2
 on:
-  workflow_run:
-    workflows: [Test and build]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,10 +9,8 @@ concurrency:
   cancel-in-progress: false
 jobs:
   deploy:
-    if: >-
-      vars.AWS_REGION != '' && vars.EC2_INSTANCE_IDS != '' && vars.AWS_DEPLOY_ROLE_ARN != '' && vars.ALB_TARGET_GROUP_ARN != '' &&
-      ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'))
+    # Retired: AWS account was closed. Retain the implementation for project history.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: production

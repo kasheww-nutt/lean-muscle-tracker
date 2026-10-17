@@ -1,0 +1,33 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "tracker-a",
+  "main": "backend.ts",
+  "compatibility_date": "2026-10-17",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
+  "alias": {
+    "node:sqlite": "./sqlite-disabled.ts"
+  },
+  "vars": {
+    "NODE_ENV": "production",
+    "TRACKER_AUTH_MODE": "supabase",
+    "DATABASE_DRIVER": "postgres",
+    "DATABASE_AUTO_MIGRATE": "0",
+    "DATABASE_SSL_MODE": "verify-full",
+    "DATABASE_POOL_MAX": "4",
+    "TRACKER_OWNER_ID": "lean-tracker-owner",
+    "PUBLIC_BASE_URL": "https://tracker.kashewwnutt.tech",
+    "REPLICA_ID": "replica-a",
+    "REPLICA_ENABLED": "true",
+    "SUPABASE_URL": "https://opjzjmmepjveasuohmej.supabase.co",
+    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_mXGbWj8KbwlNQwIlnwAEUw_tupjgWpE",
+    "OAUTH_CLIENT_ID": "lean-tracker-chatgpt",
+    "OAUTH_REDIRECT_URIS": "https://chatgpt.com/connector/oauth/DeIABnEHrZpO"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

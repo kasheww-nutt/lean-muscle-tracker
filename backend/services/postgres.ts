@@ -99,14 +99,14 @@ function databaseAdapter(query: (sql: string, values: unknown[]) => Promise<pg.Q
   } };
 }
 
-export function openPostgres(connectionString: string, options: { autoMigrate?: boolean; migrations?: string } = {}) {
+export function openPostgres(connectionString: string, options: { autoMigrate?: boolean; migrations?: string; expectedMigrations?: readonly {name:string;checksum:string}[] } = {}) {
   const pool = new pg.Pool(postgresConfig(connectionString));
   pool.on('error', () => console.error('Idle PostgreSQL connection failed.'));
   const directory = options.migrations || resolve(process.cwd(), 'database/postgres/migrations');
   const ready = (async () => {
     if (options.autoMigrate) await migratePostgres(pool, directory);
     const { rows } = await pool.query('SELECT name,checksum FROM schema_migrations');
-    for (const migration of migrationFiles(directory)) {
+    for (const migration of options.expectedMigrations ?? migrationFiles(directory)) {
       if (!rows.some(row => row.name === migration.name && row.checksum === migration.checksum)) throw Error('Database schema is outdated. Run npm run db:migrate.');
     }
   })();
