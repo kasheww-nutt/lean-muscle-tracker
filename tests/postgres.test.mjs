@@ -7,6 +7,14 @@ import { randomUUID, createHash } from 'node:crypto';
 import pg from 'pg';
 registerHooks({resolve(specifier,context,next){if(specifier.startsWith('.')&&context.parentURL?.startsWith('file:')&&!/\.[a-z]+$/.test(specifier)){const url=new URL(specifier+'.ts',context.parentURL);if(existsSync(fileURLToPath(url)))return next(url.href,context);}return next(specifier,context);}});
 const {openPostgres,postgresSql,postgresConfig}=await import('../backend/services/postgres.ts');
+const {databaseFailure}=await import('../backend/services/diagnostics.ts');
+test('Database diagnostics identify failures without logging credentials or raw messages',()=>{
+ const secret='postgresql://private-user:private-password@private-host/db';
+ assert.deepEqual(databaseFailure({code:'SELF_SIGNED_CERT_IN_CHAIN',message:'certificate not trusted '+secret}),{category:'database-tls',code:'SELF_SIGNED_CERT_IN_CHAIN'});
+ assert.deepEqual(databaseFailure({code:'28P01',message:'password authentication failed '+secret}),{category:'database-authentication',code:'28P01'});
+ assert.deepEqual(databaseFailure({message:'The options.ca option is not implemented '+secret}),{category:'runtime-unsupported-option',code:'UNKNOWN'});
+ assert.ok(!JSON.stringify(databaseFailure({message:secret,code:secret})).includes('private-'));
+});
 test('Database URL options cannot override verified TLS or the configured host',()=>{
  for(const option of ['ssl=no-verify','ssl=0','sslmode=disable','sslnegotiation=direct','host=other.example.test','password=override']) {
   assert.throws(()=>postgresConfig('postgresql://synthetic-owner:synthetic-password@db.example.test/tracker?'+option),/Unsupported/);
