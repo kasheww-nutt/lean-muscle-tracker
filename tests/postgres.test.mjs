@@ -53,9 +53,14 @@ test('Hyperdrive uses its internal binding transport without weakening direct da
  const mode=process.env.DATABASE_SSL_MODE;
  try {
   process.env.DATABASE_SSL_MODE='verify-full';
-  const uri='postgresql://synthetic:synthetic@internal-binding/db';
+  const uri='postgresql://synthetic:synthetic@test.hyperdrive.local/db?sslmode=disable';
   assert.equal(postgresConfig(uri,'hyperdrive').ssl,false);
-  assert.equal(postgresConfig(uri).ssl.rejectUnauthorized,true);
+  assert.equal(new pg.Client(postgresConfig(uri,'hyperdrive')).connectionParameters.ssl,false);
+  assert.equal(new URL(postgresConfig(uri,'hyperdrive').connectionString).search,'');
+  assert.throws(()=>postgresConfig(uri),/Unsupported database URL option/);
+  assert.equal(postgresConfig(uri.split('?')[0]).ssl.rejectUnauthorized,true);
+  assert.throws(()=>postgresConfig('postgresql://synthetic:synthetic@remote.example/db?sslmode=disable','hyperdrive'),/internal binding hostname/);
+  assert.throws(()=>postgresConfig(uri+'&password=override','hyperdrive'),/Unsupported database URL option/);
  }finally{if(mode===undefined)delete process.env.DATABASE_SSL_MODE;else process.env.DATABASE_SSL_MODE=mode;}
 });
 test('PostgreSQL binds placeholders without changing quoted values or rowid text',()=>{

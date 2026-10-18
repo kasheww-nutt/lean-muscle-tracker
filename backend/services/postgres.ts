@@ -7,6 +7,15 @@ import type { TrackerDatabase } from './database';
 export function postgresConfig(connectionString: string, transport: 'direct' | 'hyperdrive' = 'direct'): PoolConfig {
   const url = new URL(connectionString);
   if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw Error('DATABASE_URL must be a PostgreSQL URL.');
+  if (transport === 'hyperdrive') {
+    if (!url.hostname.endsWith('.hyperdrive.local') && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) throw Error('Hyperdrive transport requires an internal binding hostname.');
+    // The binding adds sslmode=disable for its internal proxy; origin TLS remains
+    // enforced by Hyperdrive's verify-full CA configuration, not by this URL.
+    const sslmode = url.searchParams.get('sslmode');
+    if (sslmode !== null && (sslmode !== 'disable' || url.searchParams.getAll('sslmode').length !== 1)) throw Error('Unexpected Hyperdrive binding SSL option.');
+    url.searchParams.delete('sslmode');
+    connectionString = url.href;
+  }
   for (const key of url.searchParams.keys()) {
     if (!['options', 'application_name'].includes(key)) throw Error('Unsupported database URL option. Use DATABASE_SSL_MODE / DATABASE_SSL_CA_FILE and pool environment settings.');
   }
