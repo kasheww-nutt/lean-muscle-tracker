@@ -1,5 +1,5 @@
 import { withRequestDatabase } from '../../backend/services/runtime';
-import { databaseFailure } from '../../backend/services/diagnostics';
+import { databaseFailure, readinessFailure } from '../../backend/services/diagnostics';
 import { openPostgres } from '../../backend/services/postgres';
 import { expectedMigrations } from './migrations.generated';
 import * as access from '../../backend/api/access';
@@ -51,7 +51,7 @@ export default {
         return handler?handler(request):new Response('Method not allowed',{status:405,headers:{Allow:Object.keys(route).join(', ')}});
       });
     }catch (error) {
-      console.error('Tracker backend request failed', databaseFailure(error));
+      console.error('Tracker backend request failed', new URL(request.url).pathname==='/api/ready' ? readinessFailure(error) : databaseFailure(error));
       response=Response.json({error:'Tracker temporarily unavailable.'},{status:503});
     }finally{if(connection)ctx.waitUntil(connection.close());}
     const result=new Response(response.body,response);

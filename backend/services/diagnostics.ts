@@ -14,3 +14,22 @@ export function databaseFailure(error: unknown) {
   if (/configuration missing|database_url/.test(message)) category='backend-configuration';
   return {category,code};
 }
+
+// Readiness queries contain no user records. Only their redacted message is logged.
+export function readinessFailure(error: unknown) {
+  const raw = typeof error === 'string' ? error : error && typeof error === 'object' && 'message' in error ? String(error.message) : 'No error message available';
+  let detail=raw;
+  const privateValues:string[]=[];
+  for(const [key,value] of Object.entries(process.env)) {
+    if(value && /SECRET|TOKEN|PASSWORD|DATABASE_URL|MIGRATION_URL|DATABASE_SSL_CA/.test(key)) privateValues.push(value);
+  }
+  for(const key of ['DATABASE_URL','DATABASE_MIGRATION_URL']) {
+    try {
+      const url=new URL(process.env[key]||'');
+      for(const value of [url.username,url.password])if(value)privateValues.push(value,decodeURIComponent(value));
+    }catch{}
+  }
+  for(const value of privateValues.sort((a,b)=>b.length-a.length))if(value)detail=detail.split(value).join('[REDACTED]');
+  detail=detail.replace(/postgres(?:ql)?:\/\/[^\s"'<>]+/gi,'[REDACTED DATABASE URL]').replace(/[\r\n\t]+/g,' ').slice(0,400);
+  return {...databaseFailure(error),detail};
+}

@@ -12,6 +12,7 @@ if(!initial){
 // Migrations are run separately with migration credentials; runtime credentials are not privileged.
 if(!process.env.DATABASE_MIGRATION_URL)throw Error('Set DATABASE_MIGRATION_URL privately before deploying.');
 run(['scripts/migrate.mjs']);
+run(['scripts/cloudflare-database-check.mjs']);
 async function waitFor(replica){
  const end=Date.now()+120000;
  while(Date.now()<end){
