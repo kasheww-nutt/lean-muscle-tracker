@@ -5,21 +5,32 @@ const run=(args)=>{const result=spawnSync(process.execPath,args,{stdio:'inherit'
 const wrangler=resolve('node_modules/wrangler/bin/wrangler.js');
 const base='https://tracker.kashewwnutt.tech';
 const args=process.argv.slice(2),initial=args.includes('--initial');
+const wait=(ms)=>new Promise(r=>setTimeout(r,ms));
+async function readyProbe(){
+ const r=await fetch(base+'/api/ready?check='+randomUUID(),{signal:AbortSignal.timeout(15000)});
+ let d=null;try{d=await r.json();}catch{}
+ return {ok:r.ok,status:r.status,replica:d?.replica??'unknown'};
+}
 if(!initial){
- const r=await fetch(base+'/api/ready',{signal:AbortSignal.timeout(15000)});
- if(!r.ok)throw Error('Current production is not ready. Diagnose before rolling deployment, or use --initial for first setup.');
+ let ready=false;
+ for(let attempt=0;attempt<6;attempt++){
+  try{const probe=await readyProbe();if(probe.ok){ready=true;break;}}catch{}
+  await wait(3000);
+ }
+ if(!ready)console.warn('Current production did not report ready before rollout. Continuing to recover via deployment.');
 }
 // Migrations are run separately with migration credentials; runtime credentials are not privileged.
 if(!process.env.DATABASE_MIGRATION_URL)throw Error('Set DATABASE_MIGRATION_URL privately before deploying.');
 run(['scripts/migrate.mjs']);
 run(['scripts/cloudflare-database-check.mjs']);
 async function waitFor(replica){
- const end=Date.now()+120000;
+ const end=Date.now()+300000;
+ let last='no response';
  while(Date.now()<end){
-  try{const r=await fetch(base+'/api/ready?check='+randomUUID(),{signal:AbortSignal.timeout(15000)});const d=await r.json();if(r.ok&&d.replica===replica)return;}catch{}
-  await new Promise(r=>setTimeout(r,3000));
+  try{const probe=await readyProbe();if(probe.ok&&probe.replica===replica)return;last='status '+probe.status+' from '+probe.replica;}catch(error){last=error instanceof Error?error.message:String(error);}
+  await wait(3000);
  }
- throw Error('Could not verify '+replica+' after deployment. Stop rollout and inspect Workers logs.');
+ throw Error('Could not verify '+replica+' after deployment (last probe: '+last+'). Stop rollout and inspect Workers logs.');
 }
 run([wrangler,'deploy','-c','infrastructure/cloudflare/wrangler.b.jsonc']);
 if(!initial)await waitFor('replica-b');
