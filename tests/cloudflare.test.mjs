@@ -44,6 +44,26 @@ test('Supabase OTP login requires browser state and verified identity, then issu
  assert.equal(auth.safeAuthReturn('https://attacker.example.test/oauth/authorize'),'/');
  globalThis.fetch=originalFetch;
 });
+test('OTP send errors remain on the email form, preserve theme and expose safe delivery guidance',async()=>{
+ const old=globalThis.fetch,oldError=console.error;
+ const logs=[];console.error=(...args)=>logs.push(args);
+ try{
+  const darkPage=await auth.login(new Request(origin+'/sso/login?theme=dark'));
+  const darkHtml=await darkPage.clone().text();
+  assert.match(darkHtml,/data-theme="dark"/);assert.match(darkHtml,/linear-gradient/);
+  assert.match(darkPage.headers.get('content-security-policy'),/font-src 'self'/);
+  const csrfValue=await csrf(darkPage.clone()),cookies=cookie(darkPage);
+  globalThis.fetch=async()=>Response.json({code:'email_address_not_authorized',message:'private-recipient@example.test'},{status:400});
+  const failed=await auth.login(post('/sso/login',{email:'smtp-check@example.test',csrf:csrfValue},cookies));
+  assert.equal(failed.status,503);const html=await failed.text();
+  assert.match(html,/custom SMTP/);assert.match(html,/data-theme="dark"/);
+  assert.ok(!html.includes('name="token"'));assert.ok(!JSON.stringify(logs).includes('private-recipient'));
+  globalThis.fetch=async()=>Response.json({code:'over_email_send_rate_limit'},{status:429});
+  const start=await auth.login(new Request(origin+'/sso/login'));
+  const limited=await auth.login(post('/sso/login',{email:'rate-check@example.test',csrf:await csrf(start.clone())},cookie(start)));
+  assert.equal(limited.status,429);assert.match(await limited.text(),/limiting code requests/);
+ }finally{globalThis.fetch=old;console.error=oldError;}
+});
 test('Request-scoped database access stays isolated across concurrent Workers requests',async()=>{
  const a={},b={};
  await Promise.all([withRequestDatabase(()=>a,async()=>{await new Promise(r=>setTimeout(r,12));assert.equal(env.DB,a);}),withRequestDatabase(()=>b,async()=>{await new Promise(r=>setTimeout(r,2));assert.equal(env.DB,b);})]);
