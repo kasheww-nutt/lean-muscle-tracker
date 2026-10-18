@@ -19,14 +19,16 @@ if(!process.env.TEST_DATABASE_URL){
    await setup.query("ALTER ROLE tracker_app PASSWORD 'synthetic-isolated-role-test-password'");
    url.username='tracker_app';url.password='synthetic-isolated-role-test-password';
    app=new pg.Pool({connectionString:url.href});
-   const schema=await app.query('SELECT name FROM schema_migrations');assert.equal(schema.rows.length,2);
+   const schema=await app.query('SELECT name FROM schema_migrations');assert.equal(schema.rows.length,3);
    await app.query("INSERT INTO tracker_accounts(user_id,cognito_subject) VALUES ('synthetic-account','synthetic-subject')");
    await app.query("INSERT INTO water_intakes(id,user_id,date,amount_ml) VALUES ('synthetic-water','synthetic-account','2026-10-18',250)");
    assert.equal((await app.query('SELECT amount_ml FROM water_intakes')).rows[0].amount_ml,250);
    await assert.rejects(()=>app.query('CREATE TABLE public.should_not_exist(id text)'));
    await assert.rejects(()=>app.query("INSERT INTO schema_migrations(name,checksum) VALUES ('forged','forged')"));
+   await app.query("INSERT INTO saved_meals(user_id,id,meal_json) VALUES ('synthetic-account','synthetic-meal','{}')");
+   assert.equal((await app.query('SELECT id FROM saved_meals')).rows[0].id,'synthetic-meal');
    const client=await setup.connect();
-   try{await client.query('SET ROLE anon');await assert.rejects(()=>client.query('SELECT * FROM public.meals'));await client.query('RESET ROLE');}finally{client.release();}
+   try{await client.query('SET ROLE anon');await assert.rejects(()=>client.query('SELECT * FROM public.meals'));await assert.rejects(()=>client.query('SELECT * FROM public.saved_meals'));await client.query('RESET ROLE');}finally{client.release();}
   }finally{await app?.end();await setup?.end();await admin.query('DROP DATABASE IF EXISTS '+database+' WITH (FORCE)');await admin.end();}
  });
 }

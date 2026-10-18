@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,7 +37,7 @@ test('File-backed database applies migrations once and survives close/reopen',as
  await connection.db.prepare('INSERT INTO water_intakes (id,user_id,date,amount_ml) VALUES (?,?,?,?)').bind('synthetic-id','owner','2026-10-12',250).run();
  connection.sqlite.close();connection=openDatabase(file);
  assert.equal((await connection.db.prepare('SELECT amount_ml FROM water_intakes WHERE id=?').bind('synthetic-id').first()).amount_ml,250);
- assert.equal((await connection.db.prepare('SELECT COUNT(*) n FROM schema_migrations').bind().first()).n,6);
+ assert.equal((await connection.db.prepare('SELECT COUNT(*) n FROM schema_migrations').bind().first()).n,readdirSync(new URL('../database/migrations/',import.meta.url)).filter(name=>name.endsWith('.sql')).length);
  const removed=await connection.db.prepare('DELETE FROM water_intakes WHERE id=?').bind('synthetic-id').run();assert.equal(removed.meta.changes,1);
  connection.sqlite.close();
 });

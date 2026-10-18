@@ -42,9 +42,9 @@ function values(kind:RecordKind,input:Record<string,unknown>,partial=false) {
  if(!Object.keys(result).length)throw new RecordError('Supply at least one detail to change.');
  return result;
 }
-export async function saveManualRecord(db:TrackerDatabase,userId:string,kind:RecordKind,input:Record<string,unknown>,id:string){
+export async function saveManualRecord(db:TrackerDatabase,userId:string,kind:RecordKind,input:Record<string,unknown>,id:string,source:'manual'|'chatgpt'='manual'){
  if(!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(id))throw new RecordError('Invalid submission identifier.');
- const record=values(kind,input);if(kind==='meal')record.source='manual';
+ const record=values(kind,input);if(kind==='meal')record.source=source;
  const columns=Object.keys(record),bound=Object.values(record);
  await db.prepare(`INSERT INTO ${tables[kind]} (id,user_id,${columns.join(',')}) VALUES (${columns.map(()=>'?').join(',')},?,?) ON CONFLICT(id) DO NOTHING`).bind(id,userId,...bound).run();
  // Stable submission IDs allow a retry without silently adding a duplicate.

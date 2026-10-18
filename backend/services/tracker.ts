@@ -122,3 +122,18 @@ export function validateExercises(value: unknown): Exercise[] {
     }) };
   });
 }
+
+// A usual meal is a frozen base serving, not a new diary entry or an AI estimate.
+export type UsualMeal = Macros & {name:string;meal_type:string;ingredients:string;ingredient_details:Ingredient[];note:string};
+export function scaleUsualMeal(meal:UsualMeal,servings:number):UsualMeal {
+ numeric(servings,'Servings',0.1,10);
+ const scale=(value:number)=>Math.round(numeric(value*servings,'Scaled nutrition',0,100000)*100)/100;
+ const quantity=(value:string,max:number)=>servings===1?value:`${servings} × (${value})`.slice(0,max);
+ return {...meal,ingredients:meal.ingredients?quantity(meal.ingredients,10000):'',
+  calories:scale(meal.calories),protein:scale(meal.protein),carbs:scale(meal.carbs),fat:scale(meal.fat),
+  ingredient_details:meal.ingredient_details.map(ingredient=>{
+   const next={...ingredient,quantity:quantity(ingredient.quantity,300)};
+   for(const key of ['calories','protein','carbs','fat'] as const)if(ingredient[key]!==undefined)next[key]=scale(ingredient[key]);
+   return next;
+  })};
+}

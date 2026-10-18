@@ -1,3 +1,4 @@
+import {listUsualMeals,saveUsualMeal,logUsualMeal} from '../services/saved-meals';
 import { env } from "../services/runtime";
 import { authenticateMcp } from "../services/mcp-auth";
 import { numeric, textValue, validateIngredients, validateExercises, parseArray, validDate as calendarDate, type Ingredient, type Exercise } from '../services/tracker';
@@ -9,6 +10,21 @@ const protocolVersions = ['2025-03-26', '2025-06-18', '2025-11-25'];
 const ingredientSchema = { type: 'array', maxItems: 100, items: { type: 'object', properties: { name: { type: 'string' }, quantity: { type: 'string', description: 'Measured quantity or honest range, with units.' }, basis: { type: 'string', description: 'Raw/cooked, recipe portion, or estimation uncertainty.' }, calories: { type: 'number' }, protein: { type: 'number' }, carbs: { type: 'number' }, fat: { type: 'number' } }, required: ['name', 'quantity'], additionalProperties: false } };
 const exerciseSchema = { type: 'array', maxItems: 100, items: { type: 'object', properties: { name: { type: 'string' }, sets: { type: 'array', items: { type: 'object', properties: { reps: { type: 'integer' }, load_kg: { type: 'number', description: 'External lifted load in kg; do not invent bodyweight load.' } }, required: ['reps', 'load_kg'], additionalProperties: false } } }, required: ['name', 'sets'], additionalProperties: false } };
 const toolList = [
+  {
+    name:'tracker_list_usual_meals',
+    description:'Read the current account’s frozen usual meals and their IDs. One serving is the original logged portion. Use these stored values instead of estimating a recurring meal again.',
+    inputSchema:{type:'object',properties:{},additionalProperties:false},
+  },
+  {
+    name:'tracker_save_usual_meal',
+    description:'Save an existing real meal as a reusable usual meal only when requested. Get its exact ID from tracker_get_day. This snapshots the meal without adding to the diary or changing totals. Saving the same meal again is harmless. Fictional meals cannot be saved.',
+    inputSchema:{type:'object',properties:{meal_id:{type:'string'}},required:['meal_id'],additionalProperties:false},
+  },
+  {
+    name:'tracker_log_usual_meal',
+    description:'Log a saved usual meal the user actually ate, using its exact ID from tracker_list_usual_meals. Ask the serving amount if unknown. All nutrition/ingredient quantities scale proportionally; this assumes the same recipe, not substitutions. Generate one UUID v4 submission_id per intended entry and reuse it on retries to prevent duplicates. Never log a hypothetical meal.',
+    inputSchema:{type:'object',properties:{meal_id:{type:'string'},servings:{type:'number',minimum:0.1,maximum:10},date:{type:'string',description:'YYYY-MM-DD, Asia/Kolkata; omit for today.'},meal_type:{type:'string',enum:['Breakfast','Lunch','Dinner','Snack','Other']},submission_id:{type:'string',description:'UUID v4; reuse for retrying this entry.'}},required:['meal_id','servings','submission_id'],additionalProperties:false},
+  },
   {
     name: 'tracker_log_water',
     description: 'Add water actually consumed on a local date, in millilitres (1 litre = 1000 ml). This ADDS to the day’s total. If the user reports a cumulative daily total, first read tracker_get_day and log only the unrecorded difference; correct existing entries with tracker_update_water. Do not guess glass or bottle sizes. No fictional water entries.',
@@ -129,6 +145,9 @@ export async function POST(request: Request) {
     const name = requestBody.params?.name;
     const userId = user.userId;
 
+    if(name==='tracker_list_usual_meals')return jsonRpc(rpcId,toolResult({meals:await listUsualMeals(env.DB,userId)}));
+    if(name==='tracker_save_usual_meal')return jsonRpc(rpcId,toolResult(await saveUsualMeal(env.DB,userId,textArg(args,'meal_id',true))));
+    if(name==='tracker_log_usual_meal')return jsonRpc(rpcId,toolResult(await logUsualMeal(env.DB,userId,textArg(args,'meal_id',true),numeric(args.servings,'Servings',0.1,10),dateArg(args),textArg(args,'submission_id',true),args.meal_type===undefined?undefined:textArg(args,'meal_type',true))));
     if (name === 'tracker_log_water') {
       const date = dateArg(args), amount = numeric(args.amount_ml, 'amount_ml', 0.01, 20000), id = crypto.randomUUID();
       await env.DB.prepare('INSERT INTO water_intakes (id,user_id,date,amount_ml,note) VALUES (?,?,?,?,?)').bind(id, userId, date, amount, textArg(args, 'note')).run();

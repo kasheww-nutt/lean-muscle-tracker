@@ -6,6 +6,7 @@ import * as access from '../../backend/api/access';
 import * as dashboard from '../../backend/api/dashboard';
 import * as history from '../../backend/api/history';
 import * as records from '../../backend/api/records';
+import * as savedMeals from '../../backend/api/saved-meals';
 import * as widget from '../../backend/api/widget';
 import * as auth from '../../backend/api/supabase-auth';
 import * as oauth from '../../backend/api/oauth';
@@ -17,6 +18,7 @@ const routes:Record<string,Partial<Record<string,Handler>>> = {
   '/api/access':{GET:access.GET,POST:access.POST,DELETE:access.DELETE},
   '/api/dashboard':{GET:dashboard.GET},'/api/history':{GET:history.GET},
   '/api/records':{GET:records.GET,POST:records.POST,PATCH:records.PATCH,DELETE:records.DELETE},
+  '/api/saved-meals':{GET:savedMeals.GET,POST:savedMeals.POST,DELETE:savedMeals.DELETE},
   '/api/widget':{GET:widget.GET,POST:widget.POST,DELETE:widget.DELETE},
   '/sso/login':{GET:auth.login,POST:auth.login},'/auth/callback':{GET:auth.callback,POST:auth.callback},
   '/oauth/authorize':{GET:oauth.authorize,POST:oauth.authorize},'/oauth/token':{POST:r=>oauth.token(r)},'/oauth/revoke':{POST:r=>oauth.token(r,true)},

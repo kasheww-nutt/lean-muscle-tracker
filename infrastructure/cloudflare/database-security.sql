@@ -11,7 +11,7 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 DO $$
 DECLARE name TEXT;
 BEGIN
- FOREACH name IN ARRAY ARRAY['meals','water_intakes','body_weights','workouts','tracker_accounts','oauth_codes','oauth_tokens','widget_tokens','auth_attempts','schema_migrations'] LOOP
+ FOREACH name IN ARRAY ARRAY['saved_meals','meals','water_intakes','body_weights','workouts','tracker_accounts','oauth_codes','oauth_tokens','widget_tokens','auth_attempts','schema_migrations'] LOOP
   EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC, anon, authenticated',name);
   EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',name);
   IF name='schema_migrations' THEN

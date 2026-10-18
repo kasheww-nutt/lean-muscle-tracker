@@ -44,6 +44,11 @@ export async function workerDatabaseSmoke({Miniflare,convertV4MiniflareOptions,c
   assert.equal(dashboard.meals[0].id,id);assert.equal(dashboard.waterTotalMl,250);assert.equal(dashboard.workouts[0].volume_kg,200);
   const isolated=await json(await request(a,'/api/dashboard?date='+date,{headers:{Cookie:cookie('runtime-account-b')}}));
   assert.equal(isolated.meals.length,0);assert.equal(isolated.waterTotalMl,0);
+  await json(await request(a,'/api/saved-meals',{method:'POST',headers,body:JSON.stringify({meal_id:id})}));
+  const usualMeals=await json(await request(b,'/api/saved-meals',{headers:{Cookie:headers.Cookie}}));
+  assert.equal(usualMeals.meals[0].id,id);assert.equal(usualMeals.meals[0].calories,100);
+  assert.equal((await json(await request(b,'/api/saved-meals',{headers:{Cookie:cookie('runtime-account-b')}}))).meals.length,0);
+  await json(await request(b,'/api/saved-meals',{method:'DELETE',headers:{...headers,Cookie:cookie('runtime-account-b')},body:JSON.stringify({meal_id:id})}),404);
   const verifier='v'.repeat(43),redirect=vars.OAUTH_REDIRECT_URIS.split(',')[0],resource=base+'/mcp';
   const params=new URLSearchParams({response_type:'code',client_id:vars.OAUTH_CLIENT_ID,redirect_uri:redirect,resource,scope:'tracker',code_challenge_method:'S256',code_challenge:createHash('sha256').update(verifier).digest('base64url'),state:'synthetic-state'});
   const authorize='/oauth/authorize?'+params;
@@ -64,9 +69,17 @@ export async function workerDatabaseSmoke({Miniflare,convertV4MiniflareOptions,c
   assert.equal((await tool(b,'tracker_get_day',{date})).waterTotalMl,250);
   await tool(b,'tracker_log_water',{date,amount_ml:50,note:'Synthetic runtime test'});
   assert.equal((await json(await request(a,'/api/dashboard?date='+date,{headers:{Cookie:headers.Cookie}}))).waterTotalMl,300);
+  assert.equal((await tool(b,'tracker_list_usual_meals',{})).meals[0].id,id);
+  const usualEntry=randomUUID(),usualArgs={meal_id:id,date,servings:0.5,submission_id:usualEntry};
+  await tool(a,'tracker_log_usual_meal',usualArgs);await tool(b,'tracker_log_usual_meal',usualArgs);
+  const reused=await json(await request(a,'/api/records?date='+date,{headers:{Cookie:headers.Cookie}}));
+  assert.equal(reused.meals.filter(m=>m.id===usualEntry).length,1);
+  assert.equal(reused.meals.find(m=>m.id===usualEntry).calories,50);
+  await json(await request(b,'/api/saved-meals',{method:'DELETE',headers,body:JSON.stringify({meal_id:id})}));
+  assert.ok((await tool(a,'tracker_get_day',{date})).meals.some(m=>m.id===usualEntry));
   const rotated=await json(await request(b,'/oauth/token',{method:'POST',body:new URLSearchParams({client_id:vars.OAUTH_CLIENT_ID,resource,grant_type:'refresh_token',refresh_token:token.refresh_token})}));assert.ok(rotated.access_token);
   await json(await request(a,'/oauth/token',{method:'POST',body:new URLSearchParams({client_id:vars.OAUTH_CLIENT_ID,resource,grant_type:'refresh_token',refresh_token:token.refresh_token})}),400);
-  console.log('Workers + Hyperdrive binding + PostgreSQL passed: both readiness checks, all four manual log types, cross-replica reads/writes, account isolation, cross-replica PKCE OAuth, MCP reads/writes and single-use refresh rotation. No real user data or email touched.');
+  console.log('Workers + Hyperdrive binding + PostgreSQL passed: both readiness checks, all four manual log types, cross-replica reads/writes, account isolation, cross-replica PKCE OAuth, MCP reads/writes, private usual meals with retry-safe scaling and single-use refresh rotation. No real user data or email touched.');
  }finally {
   await mf?.dispose();await setup?.end();
   await admin.query('DROP DATABASE IF EXISTS '+database+' WITH (FORCE)');await admin.end();

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const meals = sqliteTable("meals", {
   id: text("id").primaryKey(),
@@ -55,3 +55,11 @@ export const widgetTokens = sqliteTable("widget_tokens", {
   tokenHash: text("token_hash").notNull(),
   expiresAt: integer("expires_at").notNull(),
 });
+
+// Frozen usual-meal snapshots, scoped to the signed-in account.
+export const savedMeals = sqliteTable("saved_meals", {
+  userId: text("user_id").notNull(),
+  id: text("id").notNull(),
+  mealJson: text("meal_json").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [primaryKey({columns:[table.userId,table.id]})]);

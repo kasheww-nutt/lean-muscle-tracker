@@ -54,6 +54,27 @@ ALTER TABLE oauth_codes ADD COLUMN user_id TEXT;
 ALTER TABLE oauth_tokens ADD COLUMN user_id TEXT;
 
 INSERT INTO public.schema_migrations(name,checksum) VALUES ('0002_accounts.sql','cd6bee7860cb0b3ca58178f4c285563334a888f9496568f881243130b4651abe');
+CREATE TABLE saved_meals (
+ user_id TEXT NOT NULL,
+ id TEXT NOT NULL,
+ meal_json TEXT NOT NULL,
+ created_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS.US'),
+ PRIMARY KEY(user_id,id)
+);
+ALTER TABLE saved_meals ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE saved_meals FROM PUBLIC;
+-- Existing deployments already have the restricted backend role. First setup
+-- creates it after migrations and applies database-security.sql instead.
+DO $$ BEGIN
+ IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN REVOKE ALL ON TABLE saved_meals FROM anon; END IF;
+ IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN REVOKE ALL ON TABLE saved_meals FROM authenticated; END IF;
+ IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='tracker_app') THEN
+  GRANT SELECT,INSERT,UPDATE,DELETE ON TABLE saved_meals TO tracker_app;
+  CREATE POLICY tracker_backend ON saved_meals TO tracker_app USING (true) WITH CHECK (true);
+ END IF;
+END $$;
+
+INSERT INTO public.schema_migrations(name,checksum) VALUES ('0003_saved_meals.sql','7d776dde544a04dc06149578ef1d1d4d90bb817072bf2c956d3eb8536856f98c');
 COMMIT;
 -- Run after the tracker migrations, as the Supabase database administrator.
 -- Create the restricted role, then set its password privately in SQL Editor:
@@ -68,7 +89,7 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 DO $$
 DECLARE name TEXT;
 BEGIN
- FOREACH name IN ARRAY ARRAY['meals','water_intakes','body_weights','workouts','tracker_accounts','oauth_codes','oauth_tokens','widget_tokens','auth_attempts','schema_migrations'] LOOP
+ FOREACH name IN ARRAY ARRAY['saved_meals','meals','water_intakes','body_weights','workouts','tracker_accounts','oauth_codes','oauth_tokens','widget_tokens','auth_attempts','schema_migrations'] LOOP
   EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC, anon, authenticated',name);
   EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',name);
   IF name='schema_migrations' THEN
