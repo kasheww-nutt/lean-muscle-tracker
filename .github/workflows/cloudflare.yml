@@ -58,6 +58,7 @@ jobs:
       DATABASE_MIGRATION_URL: ${{ secrets.TRACKER_DATABASE_MIGRATION_URL }}
       TRACKER_SESSION_SECRET: ${{ secrets.TRACKER_SESSION_SECRET }}
       DATABASE_SSL_MODE: verify-full
+      DATABASE_SSL_CA: ${{ secrets.TRACKER_DATABASE_SSL_CA }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -66,6 +67,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build:cloudflare
+      - name: Check database trust certificate
+        shell: bash
+        run: |
+          node --input-type=module -e 'import {X509Certificate} from "node:crypto"; const ca=process.env.DATABASE_SSL_CA; if(!ca)throw Error("Add the Supabase CA certificate as GitHub secret TRACKER_DATABASE_SSL_CA before deploying."); new X509Certificate(ca); console.log("Database CA certificate is configured.");'
       - name: Create private services for first setup
         if: github.event_name == 'workflow_dispatch' && inputs.initial_setup
         run: |
@@ -76,7 +81,7 @@ jobs:
         run: |
           set -euo pipefail
           for replica in a b; do
-            python3 -c 'import json,os; print(json.dumps({k:os.environ[k] for k in ["DATABASE_URL","TRACKER_SESSION_SECRET"]}))' | npx wrangler secret bulk -c "infrastructure/cloudflare/wrangler.$replica.jsonc"
+            python3 -c 'import json,os; print(json.dumps({k:os.environ[k] for k in ["DATABASE_URL","TRACKER_SESSION_SECRET","DATABASE_SSL_CA"]}))' | npx wrangler secret bulk -c "infrastructure/cloudflare/wrangler.$replica.jsonc"
           done
       - name: Deploy both replicas and the router
         env:

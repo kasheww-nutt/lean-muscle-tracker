@@ -17,12 +17,13 @@ export function postgresConfig(connectionString: string): PoolConfig {
   }
   const max = Number(process.env.DATABASE_POOL_MAX || 10);
   if (!Number.isInteger(max) || max < 1 || max > 50) throw Error('Invalid DATABASE_POOL_MAX.');
+  const ca = process.env.DATABASE_SSL_CA || (process.env.DATABASE_SSL_CA_FILE ? readFileSync(process.env.DATABASE_SSL_CA_FILE, 'utf8') : undefined);
   return {
     connectionString, max, connectionTimeoutMillis: 5000, idleTimeoutMillis: 30000,
     statement_timeout: 15000, query_timeout: 20000, allowExitOnIdle: true,
     ssl: mode === 'disable' ? false : {
       rejectUnauthorized: true,
-      ...(process.env.DATABASE_SSL_CA_FILE ? { ca: readFileSync(process.env.DATABASE_SSL_CA_FILE, 'utf8') } : {}),
+      ...(ca ? { ca } : {}),
     },
     types: { getTypeParser(oid: number, format?: 'text' | 'binary') {
       if (oid === 20 && format !== 'binary') return (value: string) => {

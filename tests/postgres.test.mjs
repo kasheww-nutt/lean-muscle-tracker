@@ -12,6 +12,23 @@ test('Database URL options cannot override verified TLS or the configured host',
   assert.throws(()=>postgresConfig('postgresql://synthetic-owner:synthetic-password@db.example.test/tracker?'+option),/Unsupported/);
  }
 });
+test('Inline database CA reaches pg without disabling certificate or hostname verification',()=>{
+ const keys=['DATABASE_SSL_MODE','DATABASE_SSL_CA','DATABASE_SSL_CA_FILE'];
+ const original=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
+ try {
+  process.env.DATABASE_SSL_MODE='verify-full';
+  delete process.env.DATABASE_SSL_CA_FILE;
+  delete process.env.DATABASE_SSL_CA;
+  const url='postgresql://synthetic-owner:synthetic-password@db.example.test/tracker';
+  assert.deepEqual(postgresConfig(url).ssl,{rejectUnauthorized:true});
+  const ca='-----BEGIN CERTIFICATE-----\nsynthetic-ca-fixture\n-----END CERTIFICATE-----';
+  process.env.DATABASE_SSL_CA=ca;
+  assert.deepEqual(postgresConfig(url).ssl,{rejectUnauthorized:true,ca});
+  assert.equal(postgresConfig(url).ssl.checkServerIdentity,undefined);
+ } finally {
+  for(const k of keys)if(original[k]===undefined)delete process.env[k];else process.env[k]=original[k];
+ }
+});
 test('PostgreSQL binds placeholders without changing quoted values or rowid text',()=>{
  assert.equal(postgresSql("SELECT rowid, '?' AS question, 'rowid' AS name WHERE id=? AND date=?"),"SELECT record_order, '?' AS question, 'rowid' AS name WHERE id=$1 AND date=$2");
 });
