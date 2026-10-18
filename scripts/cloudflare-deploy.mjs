@@ -1,30 +1,44 @@
 import {spawnSync} from 'node:child_process';
 import {resolve} from 'node:path';
 import {randomUUID} from 'node:crypto';
-const run=(args)=>{const result=spawnSync(process.execPath,args,{stdio:'inherit',env:process.env});if(result.status!==0)process.exit(result.status||1);};
-const wrangler=resolve('node_modules/wrangler/bin/wrangler.js');
+import {pathToFileURL} from 'node:url';
 const base='https://tracker.kashewwnutt.tech';
-const args=process.argv.slice(2),initial=args.includes('--initial');
-if(!initial){
- const r=await fetch(base+'/api/ready',{signal:AbortSignal.timeout(15000)});
- if(!r.ok)throw Error('Current production is not ready. Diagnose before rolling deployment, or use --initial for first setup.');
+
+export async function readinessProbe(replica,request=fetch) {
+ try {
+  const url=new URL('/api/ready',base);url.searchParams.set('replica',replica);url.searchParams.set('check',randomUUID());
+  const response=await request(url,{signal:AbortSignal.timeout(15000),redirect:'manual',cache:'no-store'});
+  let value;try{value=await response.json();}catch{return {ok:false,status:response.status,replica:'non-json'};}
+  const actual=['replica-a','replica-b'].includes(value?.replica)?value.replica:'missing';
+  return {ok:response.ok&&value?.status==='ok'&&actual===replica,status:response.status,replica:actual};
+ }catch{return {ok:false,status:0,replica:'connection-failed'};}
 }
-// Migrations are run separately with migration credentials; runtime credentials are not privileged.
-if(!process.env.DATABASE_MIGRATION_URL)throw Error('Set DATABASE_MIGRATION_URL privately before deploying.');
-run(['scripts/migrate.mjs']);
-run(['scripts/cloudflare-database-check.mjs']);
-async function waitFor(replica){
- const end=Date.now()+120000;
- while(Date.now()<end){
-  try{const r=await fetch(base+'/api/ready?check='+randomUUID(),{signal:AbortSignal.timeout(15000)});const d=await r.json();if(r.ok&&d.replica===replica)return;}catch{}
-  await new Promise(r=>setTimeout(r,3000));
- }
- throw Error('Could not verify '+replica+' after deployment. Stop rollout and inspect Workers logs.');
+
+export async function waitFor(replica,{probe=readinessProbe,timeout=120000,pause=ms=>new Promise(r=>setTimeout(r,ms)),now=Date.now}={}) {
+ const end=now()+timeout;let last;
+ do {
+  last=await probe(replica);if(last.ok)return;
+  if(now()>=end)break;
+  await pause(3000);
+ }while(now()<end);
+ throw Error('Readiness failed for '+replica+' (last HTTP '+last?.status+', replica '+last?.replica+'). Rollout stopped; the next replica was not updated.');
 }
-run([wrangler,'deploy','-c','infrastructure/cloudflare/wrangler.b.jsonc']);
-if(!initial)await waitFor('replica-b');
-run([wrangler,'deploy','-c','infrastructure/cloudflare/wrangler.a.jsonc']);
-if(!initial)await waitFor('replica-a');
-run([wrangler,'deploy','-c','infrastructure/cloudflare/wrangler.router.jsonc']);
-await waitFor('replica-a');await waitFor('replica-b');
-console.log('Cloudflare deployment passed: both replicas are ready through the public router.');
+
+export async function rollout(deploy,ready=waitFor) {
+ // The router's read-only targeting must exist before individual replica checks.
+ await deploy('router');
+ await deploy('b');await ready('replica-b');
+ await deploy('a');await ready('replica-a');
+ await ready('replica-b');
+}
+
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href) {
+ const run=args=>{const result=spawnSync(process.execPath,args,{stdio:'inherit',env:process.env});if(result.status!==0)throw Error('Deployment command failed; rollout stopped.');};
+ try {
+  if(!process.env.DATABASE_MIGRATION_URL)throw Error('Set DATABASE_MIGRATION_URL privately before deploying.');
+  run(['scripts/migrate.mjs']);run(['scripts/cloudflare-database-check.mjs']);
+  const wrangler=resolve('node_modules/wrangler/bin/wrangler.js');
+  await rollout(replica=>run([wrangler,'deploy','-c','infrastructure/cloudflare/wrangler.'+replica+'.jsonc']));
+  console.log('Cloudflare deployment passed: both replicas are database-ready through the public router.');
+ }catch(error){console.error(error instanceof Error?error.message:'Deployment failed.');process.exitCode=1;}
+}

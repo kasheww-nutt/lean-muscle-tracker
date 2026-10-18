@@ -42,7 +42,8 @@ jobs:
       - run: npx tsc --project tsconfig.cloudflare.json --noEmit --incremental false
       - run: npm test
       - run: npm run build:cloudflare
-      - run: npm run test:cloudflare-runtime
+      - name: Verify Worker database, accounts, OAuth and MCP integration
+        run: npm run test:cloudflare-runtime
       - run: npx wrangler deploy --dry-run -c infrastructure/cloudflare/wrangler.a.jsonc
       - run: npx wrangler deploy --dry-run -c infrastructure/cloudflare/wrangler.router.jsonc
       - run: npm run check:public
@@ -71,6 +72,10 @@ jobs:
         shell: bash
         run: |
           node --input-type=module -e 'import {X509Certificate} from "node:crypto"; const ca=process.env.DATABASE_SSL_CA; if(!ca)throw Error("Add the Supabase CA certificate as GitHub secret TRACKER_DATABASE_SSL_CA before deploying."); new X509Certificate(ca); console.log("Database CA certificate is configured.");'
+      - name: Validate application database before changing Workers
+        run: |
+          node scripts/migrate.mjs
+          node scripts/cloudflare-database-check.mjs
       - name: Configure verified Hyperdrive database connection
         run: node scripts/cloudflare-hyperdrive-setup.mjs
       - name: Create private services for first setup

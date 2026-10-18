@@ -19,7 +19,10 @@ export async function routeRequest(request:Request,env:Bindings,choose=()=>crypt
     if(url.pathname==='/'||url.pathname==='/sw.js')result.headers.set('Cache-Control','no-cache');
     return result;
   }
-  const candidates=choose()===0?[env.BACKEND_A,env.BACKEND_B]:[env.BACKEND_B,env.BACKEND_A];
+  // Read-only deployment probes must verify the named replica, never a fallback.
+  const target=request.method==='GET'&&url.pathname==='/api/ready'?url.searchParams.get('replica'):null;
+  if(target!==null&&!['replica-a','replica-b'].includes(target))return Response.json({error:'Invalid readiness target.'},{status:400});
+  const candidates=target?[target==='replica-a'?env.BACKEND_A:env.BACKEND_B]:choose()===0?[env.BACKEND_A,env.BACKEND_B]:[env.BACKEND_B,env.BACKEND_A];
   for(const candidate of candidates) {
     if(!await healthy(candidate,base.origin))continue;
     try{
@@ -30,6 +33,6 @@ export async function routeRequest(request:Request,env:Bindings,choose=()=>crypt
       return response;
     }catch{return Response.json({error:'Request interrupted. Check your records before retrying.'},{status:503,headers:{'Cache-Control':'no-store'}});}
   }
-  return Response.json({error:'Both application replicas are unavailable.'},{status:503,headers:{'Cache-Control':'no-store','Retry-After':'10'}});
+  return Response.json({error:target?'Requested replica is unavailable.':'Both application replicas are unavailable.'},{status:503,headers:{'Cache-Control':'no-store','Retry-After':'10'}});
 }
 export default {fetch:(request:Request,env:Bindings)=>routeRequest(request,env)};

@@ -60,7 +60,12 @@ test('Router distributes traffic, skips unhealthy replicas and never retries an 
  assert.equal((await (await routeRequest(new Request(origin+'/api/health'),bindings,()=>0)).json()).replica,'a');
  assert.equal((await (await routeRequest(new Request(origin+'/api/health'),bindings,()=>1)).json()).replica,'b');
  unhealthy=true;assert.equal((await (await routeRequest(new Request(origin+'/api/ready'),bindings,()=>0)).json()).replica,'b');
- unhealthy=false;failWrite=true;const previousB=b;
+ // Targeted readiness cannot accidentally verify the other replica.
+ assert.equal((await routeRequest(new Request(origin+'/api/ready?replica=replica-a'),bindings,()=>1)).status,503);
+ unhealthy=false;
+ assert.equal((await (await routeRequest(new Request(origin+'/api/ready?replica=replica-a'),bindings,()=>1)).json()).replica,'a');
+ assert.equal((await routeRequest(new Request(origin+'/api/ready?replica=other'),bindings)).status,400);
+ failWrite=true;const previousB=b;
  assert.equal((await routeRequest(new Request(origin+'/api/records',{method:'POST',body:'synthetic'}),bindings,()=>0)).status,503);
  assert.equal(b,previousB);
  assert.equal((await routeRequest(new Request('https://attacker.example.test/api/records'),bindings)).status,404);

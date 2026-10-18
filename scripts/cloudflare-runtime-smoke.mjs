@@ -4,6 +4,7 @@ import {join,dirname} from 'node:path';
 import {createRequire} from 'node:module';
 import {spawnSync} from 'node:child_process';
 import assert from 'node:assert/strict';
+import {workerDatabaseSmoke} from './cloudflare-database-smoke.mjs';
 const require=createRequire(import.meta.url);
 const {Miniflare,convertV4MiniflareOptions}=await import(require.resolve('miniflare',{paths:[dirname(require.resolve('wrangler/package.json'))]}));
 const directory=mkdtempSync(join(tmpdir(),'tracker-workerd-')),bundle=join(directory,'worker.upload');
@@ -22,5 +23,6 @@ try{
  const metadata=await mf.dispatchFetch(base+'/.well-known/oauth-authorization-server');assert.equal(metadata.status,200);assert.equal((await metadata.json()).token_endpoint,base+'/oauth/token');
  const login=await mf.dispatchFetch(base+'/sso/login');assert.equal(login.status,200);assert.equal(login.headers.get('referrer-policy'),'same-origin');assert.match(await login.text(),/name="csrf"/);
  const mcp=await mf.dispatchFetch(base+'/mcp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25'}})});assert.equal(mcp.status,401);assert.match(mcp.headers.get('www-authenticate'),/resource_metadata/);
+ await workerDatabaseSmoke({Miniflare,convertV4MiniflareOptions,code,vars});
  console.log('Actual Workers runtime passed: replica health, OAuth discovery, signed login page, protected MCP challenge. No real email was sent.');
 }finally{await mf.dispose();rmSync(directory,{recursive:true,force:true});}
