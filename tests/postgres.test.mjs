@@ -49,6 +49,15 @@ test('Inline database CA reaches pg without disabling certificate or hostname ve
   for(const k of keys)if(original[k]===undefined)delete process.env[k];else process.env[k]=original[k];
  }
 });
+test('Hyperdrive uses its internal binding transport without weakening direct database TLS',()=>{
+ const mode=process.env.DATABASE_SSL_MODE;
+ try {
+  process.env.DATABASE_SSL_MODE='verify-full';
+  const uri='postgresql://synthetic:synthetic@internal-binding/db';
+  assert.equal(postgresConfig(uri,'hyperdrive').ssl,false);
+  assert.equal(postgresConfig(uri).ssl.rejectUnauthorized,true);
+ }finally{if(mode===undefined)delete process.env.DATABASE_SSL_MODE;else process.env.DATABASE_SSL_MODE=mode;}
+});
 test('PostgreSQL binds placeholders without changing quoted values or rowid text',()=>{
  assert.equal(postgresSql("SELECT rowid, '?' AS question, 'rowid' AS name WHERE id=? AND date=?"),"SELECT record_order, '?' AS question, 'rowid' AS name WHERE id=$1 AND date=$2");
 });

@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import type { TrackerDatabase } from './database';
 
-export function postgresConfig(connectionString: string): PoolConfig {
+export function postgresConfig(connectionString: string, transport: 'direct' | 'hyperdrive' = 'direct'): PoolConfig {
   const url = new URL(connectionString);
   if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw Error('DATABASE_URL must be a PostgreSQL URL.');
   for (const key of url.searchParams.keys()) {
@@ -17,11 +17,12 @@ export function postgresConfig(connectionString: string): PoolConfig {
   }
   const max = Number(process.env.DATABASE_POOL_MAX || 10);
   if (!Number.isInteger(max) || max < 1 || max > 50) throw Error('Invalid DATABASE_POOL_MAX.');
-  const ca = process.env.DATABASE_SSL_CA || (process.env.DATABASE_SSL_CA_FILE ? readFileSync(process.env.DATABASE_SSL_CA_FILE, 'utf8') : undefined);
+  const ca = transport === 'hyperdrive' ? undefined : process.env.DATABASE_SSL_CA || (process.env.DATABASE_SSL_CA_FILE ? readFileSync(process.env.DATABASE_SSL_CA_FILE, 'utf8') : undefined);
   return {
     connectionString, max, connectionTimeoutMillis: 5000, idleTimeoutMillis: 30000,
     statement_timeout: 15000, query_timeout: 20000, allowExitOnIdle: true,
-    ssl: mode === 'disable' ? false : {
+    // Hyperdrive's internal binding owns the transport; origin TLS is verified by its CA configuration.
+    ssl: transport === 'hyperdrive' || mode === 'disable' ? false : {
       rejectUnauthorized: true,
       ...(ca ? { ca } : {}),
     },
@@ -100,8 +101,8 @@ function databaseAdapter(query: (sql: string, values: unknown[]) => Promise<pg.Q
   } };
 }
 
-export function openPostgres(connectionString: string, options: { autoMigrate?: boolean; migrations?: string; expectedMigrations?: readonly {name:string;checksum:string}[] } = {}) {
-  const pool = new pg.Pool(postgresConfig(connectionString));
+export function openPostgres(connectionString: string, options: { autoMigrate?: boolean; migrations?: string; expectedMigrations?: readonly {name:string;checksum:string}[]; transport?: 'direct' | 'hyperdrive' } = {}) {
+  const pool = new pg.Pool(postgresConfig(connectionString, options.transport));
   pool.on('error', () => console.error('Idle PostgreSQL connection failed.'));
   const directory = options.migrations || resolve(process.cwd(), 'database/postgres/migrations');
   const ready = (async () => {

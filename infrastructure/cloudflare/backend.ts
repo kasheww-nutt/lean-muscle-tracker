@@ -10,6 +10,7 @@ import * as widget from '../../backend/api/widget';
 import * as auth from '../../backend/api/supabase-auth';
 import * as oauth from '../../backend/api/oauth';
 import * as mcp from '../../backend/mcp/handler';
+type Bindings = {HYPERDRIVE?:{connectionString:string}};
 type Context = {waitUntil(promise:Promise<unknown>):void};
 type Handler = (request:Request)=>Promise<Response>;
 const routes:Record<string,Partial<Record<string,Handler>>> = {
@@ -25,10 +26,11 @@ const routes:Record<string,Partial<Record<string,Handler>>> = {
   '/.well-known/oauth-protected-resource/mcp':{GET:async()=>oauth.metadata(true)},
 };
 export default {
-  async fetch(request:Request,_bindings:unknown,ctx:Context) {
+  async fetch(request:Request,bindings:Bindings,ctx:Context) {
     let connection:ReturnType<typeof openPostgres>|undefined;
     const getDatabase=()=>{
-      if(!connection)connection=openPostgres(process.env.DATABASE_URL!,{expectedMigrations});
+      if(!bindings.HYPERDRIVE?.connectionString)throw Error('Hyperdrive database binding configuration missing');
+      if(!connection)connection=openPostgres(bindings.HYPERDRIVE.connectionString,{expectedMigrations,transport:'hyperdrive'});
       return connection.db;
     };
     let response:Response;

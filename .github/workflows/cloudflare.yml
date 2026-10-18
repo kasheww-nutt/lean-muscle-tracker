@@ -71,6 +71,8 @@ jobs:
         shell: bash
         run: |
           node --input-type=module -e 'import {X509Certificate} from "node:crypto"; const ca=process.env.DATABASE_SSL_CA; if(!ca)throw Error("Add the Supabase CA certificate as GitHub secret TRACKER_DATABASE_SSL_CA before deploying."); new X509Certificate(ca); console.log("Database CA certificate is configured.");'
+      - name: Configure verified Hyperdrive database connection
+        run: node scripts/cloudflare-hyperdrive-setup.mjs
       - name: Create private services for first setup
         if: github.event_name == 'workflow_dispatch' && inputs.initial_setup
         run: |
@@ -81,7 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           for replica in a b; do
-            python3 -c 'import json,os; print(json.dumps({k:os.environ[k] for k in ["DATABASE_URL","TRACKER_SESSION_SECRET","DATABASE_SSL_CA"]}))' | npx wrangler secret bulk -c "infrastructure/cloudflare/wrangler.$replica.jsonc"
+            python3 -c 'import json,os; print(json.dumps({k:os.environ[k] for k in ["TRACKER_SESSION_SECRET"]}))' | npx wrangler secret bulk -c "infrastructure/cloudflare/wrangler.$replica.jsonc"
           done
       - name: Deploy both replicas and the router
         env:
