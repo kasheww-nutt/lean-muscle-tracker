@@ -77,9 +77,17 @@ export async function workerDatabaseSmoke({Miniflare,convertV4MiniflareOptions,c
   assert.equal(reused.meals.find(m=>m.id===usualEntry).calories,50);
   await json(await request(b,'/api/saved-meals',{method:'DELETE',headers,body:JSON.stringify({meal_id:id})}));
   assert.ok((await tool(a,'tracker_get_day',{date})).meals.some(m=>m.id===usualEntry));
+  const coach=await json(await request(a,'/api/coach?date='+date,{headers:{Cookie:headers.Cookie}}));
+  assert.equal(coach.totals.calories,150);assert.equal(coach.planning.options.length,3);
+  const mealPlan=randomUUID(),option=coach.planning.options[0];
+  await json(await request(a,'/api/coach',{method:'POST',headers,body:JSON.stringify({action:'plan',id:mealPlan,date,optionId:option.id,time:'19:00',servings:1})}));
+  const planned=await json(await request(b,'/api/coach?date='+date,{headers:{Cookie:headers.Cookie}}));assert.equal(planned.plans[0].id,mealPlan);assert.equal(planned.totals.calories,150);
+  const isolatedCoach=await json(await request(a,'/api/coach?date='+date,{headers:{Cookie:cookie('runtime-account-b')}}));assert.equal(isolatedCoach.plans.length,0);
+  await json(await request(b,'/api/coach',{method:'POST',headers,body:JSON.stringify({action:'skip',id:mealPlan})}));
+  await json(await request(a,'/api/coach',{method:'POST',headers,body:JSON.stringify({action:'ask',id:randomUUID(),date,question:'Synthetic question',consent:false})}),400);
   const rotated=await json(await request(b,'/oauth/token',{method:'POST',body:new URLSearchParams({client_id:vars.OAUTH_CLIENT_ID,resource,grant_type:'refresh_token',refresh_token:token.refresh_token})}));assert.ok(rotated.access_token);
   await json(await request(a,'/oauth/token',{method:'POST',body:new URLSearchParams({client_id:vars.OAUTH_CLIENT_ID,resource,grant_type:'refresh_token',refresh_token:token.refresh_token})}),400);
-  console.log('Workers + Hyperdrive binding + PostgreSQL passed: both readiness checks, all four manual log types, cross-replica reads/writes, account isolation, cross-replica PKCE OAuth, MCP reads/writes, private usual meals with retry-safe scaling and single-use refresh rotation. No real user data or email touched.');
+  console.log('Workers + Hyperdrive binding + PostgreSQL passed: both readiness checks, all four manual log types, cross-replica reads/writes, account isolation, cross-replica PKCE OAuth, MCP reads/writes, private usual meals with retry-safe scaling private meal plans without diary mutation, and single-use refresh rotation. No real user data or email touched.');
  }finally {
   await mf?.dispose();await setup?.end();
   await admin.query('DROP DATABASE IF EXISTS '+database+' WITH (FORCE)');await admin.end();

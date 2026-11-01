@@ -1,3 +1,4 @@
+import {AsyncLocalStorage} from 'node:async_hooks';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -29,17 +30,25 @@ export function openDatabase(filename: string, migrations = resolve(process.cwd(
       sqlite.exec('COMMIT');
     } catch (error) { sqlite.exec('ROLLBACK'); sqlite.close(); throw error; }
   }
+  const scope=new AsyncLocalStorage<boolean>();
+  let queue:Promise<void>=Promise.resolve();
+  const exclusive=async<T>(work:()=>Promise<T>)=>{const previous=queue;let release!:()=>void;queue=new Promise<void>(resolve=>{release=resolve;});await previous;try{return await work();}finally{release();}};
+  const execute=async<T>(work:()=>T)=>scope.getStore()?work():exclusive(async()=>work());
   const db: TrackerDatabase = {
     prepare(sql) {
       return { bind(...values) {
         const params = values.map(v => v === undefined ? null : v);
         return {
-          async all<T>() { return { results: sqlite.prepare(sql).all(...params) as T[] }; },
-          async first<T>() { return (sqlite.prepare(sql).get(...params) as T | undefined) ?? null; },
-          async run() { return { meta: { changes: Number(sqlite.prepare(sql).run(...params).changes) } }; },
+          async all<T>() { return execute(()=>({ results: sqlite.prepare(sql).all(...params) as T[] })); },
+          async first<T>() { return execute(()=>(sqlite.prepare(sql).get(...params) as T | undefined) ?? null); },
+          async run() { return execute(()=>({ meta: { changes: Number(sqlite.prepare(sql).run(...params).changes) } })); },
         };
       } };
     },
+  };
+  db.transaction=async work=>{
+    if(scope.getStore())return work(db);
+    return exclusive(()=>scope.run(true,async()=>{sqlite.exec('BEGIN IMMEDIATE');try{const result=await work(db);sqlite.exec('COMMIT');return result;}catch(error){sqlite.exec('ROLLBACK');throw error;}}));
   };
   return { db, sqlite };
 }

@@ -11,5 +11,9 @@ export const expectedMigrations = [
   {
     "name": "0003_saved_meals.sql",
     "checksum": "7d776dde544a04dc06149578ef1d1d4d90bb817072bf2c956d3eb8536856f98c"
+  },
+  {
+    "name": "0004_coach.sql",
+    "checksum": "74c57bc2039415c4325b3a62d35fe95263279cc2c125aff65801b769f02850c9"
   }
 ] as const;

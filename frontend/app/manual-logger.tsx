@@ -12,7 +12,7 @@ const empty=():Entries=>({meals:[],water:[],weights:[],workouts:[]});
 const collection={meal:'meals',water:'water',weight:'weights',workout:'workouts'} as const;
 const text=(entry:Entry)=>Object.fromEntries(Object.entries(entry).filter(([,v])=>typeof v==='string'||typeof v==='number').map(([k,v])=>[k,String(v)]));
 
-export default function ManualLogger({date,onSaved,onExpired}:{date:string;onSaved:(date:string)=>void;onExpired:()=>void}){
+export default function ManualLogger({date,onSaved,onExpired}:{date:string;onSaved:(date:string,kind?:Kind)=>void;onExpired:()=>void}){
  const dialog=useRef<HTMLDialogElement>(null),pending=useRef(false),submission=useRef('');
  const [open,setOpen]=useState(false),[kind,setKind]=useState<Kind>('meal'),[day,setDay]=useState(date||localDate());
  const [values,setValues]=useState<Record<string,string>>({}),[ingredients,setIngredients]=useState<Ingredient[]>([]),[exercises,setExercises]=useState<Exercise[]>([]);
@@ -67,7 +67,7 @@ export default function ManualLogger({date,onSaved,onExpired}:{date:string;onSav
    if(kind==='weight')data={...data,date:reference?null:day,weight_kg:number('weight_kg'),record_type:reference?'reference':'weigh_in',context:values.context||''};
    if(kind==='workout')data={...data,session:values.session||'',details:values.details||'',exercises,...(values.volume_kg?.trim()?{volume_kg:number('volume_kg')}:{})};
    await send(editing?'PATCH':'POST',{kind,id:editing||submission.current,data});
-   const wasEditing=!!editing;reset();setMessage(wasEditing?'Entry updated.':'Entry saved.');reload();onSaved(day);
+   const wasEditing=!!editing;reset();setMessage(wasEditing?'Entry updated.':'Entry saved.');reload();onSaved(day,kind);
   }catch(e){setError(e instanceof Error?e.message:'Could not save this entry.');}
   finally{pending.current=false;setBusy(false);}
  }

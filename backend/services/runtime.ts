@@ -1,9 +1,12 @@
+import type {AiBinding} from '../coach/assistant';
 import { openDatabase, type TrackerDatabase } from './database';
 import { resolve } from 'node:path';
 import { openPostgres } from './postgres';
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 // Workers must never share an open TCP connection between request contexts.
+const requestAI=new AsyncLocalStorage<AiBinding|undefined>();
+export function withRequestAI<T>(ai:AiBinding|undefined,work:()=>T):T{return requestAI.run(ai,work);}
 const requestDatabase = new AsyncLocalStorage<() => TrackerDatabase>();
 export function withRequestDatabase<T>(getDatabase: () => TrackerDatabase, work: () => T): T {
   return requestDatabase.run(getDatabase, work);
@@ -11,6 +14,7 @@ export function withRequestDatabase<T>(getDatabase: () => TrackerDatabase, work:
 
 const state = globalThis as typeof globalThis & { trackerDB?: TrackerDatabase };
 export const env = {
+  get AI(){return requestAI.getStore();},
   get DB() {
     const scoped = requestDatabase.getStore();
     if (scoped) return scoped();

@@ -1,4 +1,6 @@
-import { withRequestDatabase } from '../../backend/services/runtime';
+import * as coach from '../../backend/api/coach';
+import type {AiBinding} from '../../backend/coach/assistant';
+import { withRequestDatabase,withRequestAI } from '../../backend/services/runtime';
 import { databaseFailure, readinessFailure } from '../../backend/services/diagnostics';
 import { openPostgres } from '../../backend/services/postgres';
 import { expectedMigrations } from './migrations.generated';
@@ -11,10 +13,11 @@ import * as widget from '../../backend/api/widget';
 import * as auth from '../../backend/api/supabase-auth';
 import * as oauth from '../../backend/api/oauth';
 import * as mcp from '../../backend/mcp/handler';
-type Bindings = {HYPERDRIVE?:{connectionString:string}};
+type Bindings = {AI?:AiBinding;HYPERDRIVE?:{connectionString:string}};
 type Context = {waitUntil(promise:Promise<unknown>):void};
 type Handler = (request:Request)=>Promise<Response>;
 const routes:Record<string,Partial<Record<string,Handler>>> = {
+  '/api/coach':{GET:coach.GET,POST:coach.POST},
   '/api/access':{GET:access.GET,POST:access.POST,DELETE:access.DELETE},
   '/api/dashboard':{GET:dashboard.GET},'/api/history':{GET:history.GET},
   '/api/records':{GET:records.GET,POST:records.POST,PATCH:records.PATCH,DELETE:records.DELETE},
@@ -38,7 +41,7 @@ export default {
     let response:Response;
     try {
       if(process.env.TRACKER_AUTH_MODE!=='supabase'||!process.env.TRACKER_SESSION_SECRET||process.env.TRACKER_SESSION_SECRET.length<32)throw Error('Backend configuration missing');
-      response=await withRequestDatabase(getDatabase,async()=>{
+      response=await withRequestAI(bindings.AI,()=>withRequestDatabase(getDatabase,async()=>{
         const path=new URL(request.url).pathname;
         if(path==='/api/health') {
           const available=process.env.REPLICA_ENABLED!=='false';
@@ -53,7 +56,7 @@ export default {
         if(!route)return new Response('Not found',{status:404});
         const handler=route[request.method];
         return handler?handler(request):new Response('Method not allowed',{status:405,headers:{Allow:Object.keys(route).join(', ')}});
-      });
+      }));
     }catch (error) {
       console.error('Tracker backend request failed', new URL(request.url).pathname==='/api/ready' ? readinessFailure(error) : databaseFailure(error));
       response=Response.json({error:'Tracker temporarily unavailable.'},{status:503});

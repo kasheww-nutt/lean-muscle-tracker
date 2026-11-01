@@ -63,3 +63,16 @@ export const savedMeals = sqliteTable("saved_meals", {
   mealJson: text("meal_json").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [primaryKey({columns:[table.userId,table.id]})]);
+
+export const coachProfiles = sqliteTable("coach_profiles", {
+ userId:text("user_id").primaryKey(),profileJson:text("profile_json").notNull(),
+});
+export const mealPlans = sqliteTable("meal_plans", {
+ id:text("id").primaryKey(),userId:text("user_id").notNull(),date:text("date").notNull(),
+ plannedTime:text("planned_time").notNull().default(""),mealJson:text("meal_json").notNull(),
+ status:text("status").notNull().default("planned"),createdAtMs:integer("created_at_ms").notNull(),
+},table=>[index("meal_plans_user_date_idx").on(table.userId,table.date)]);
+export const coachAnswers = sqliteTable("coach_answers", {
+ userId:text("user_id").notNull(),id:text("id").notNull(),questionHash:text("question_hash").notNull(),
+ state:text("state").notNull(),answerJson:text("answer_json").notNull().default("{}"),createdAtMs:integer("created_at_ms").notNull(),
+},table=>[primaryKey({columns:[table.userId,table.id]})]);

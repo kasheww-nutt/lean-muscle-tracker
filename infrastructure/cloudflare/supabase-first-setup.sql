@@ -75,6 +75,31 @@ DO $$ BEGIN
 END $$;
 
 INSERT INTO public.schema_migrations(name,checksum) VALUES ('0003_saved_meals.sql','7d776dde544a04dc06149578ef1d1d4d90bb817072bf2c956d3eb8536856f98c');
+CREATE TABLE coach_profiles(user_id TEXT PRIMARY KEY,profile_json TEXT NOT NULL);
+CREATE TABLE meal_plans(
+ id TEXT PRIMARY KEY,user_id TEXT NOT NULL,date TEXT NOT NULL,planned_time TEXT NOT NULL DEFAULT '',
+ meal_json TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'planned' CHECK(status IN ('planned','eaten','skipped')),
+ created_at_ms BIGINT NOT NULL
+);
+CREATE INDEX meal_plans_user_date_idx ON meal_plans(user_id,date);
+CREATE TABLE coach_answers(
+ user_id TEXT NOT NULL,id TEXT NOT NULL,question_hash TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN ('pending','complete','failed')),
+ answer_json TEXT NOT NULL DEFAULT '{}',created_at_ms BIGINT NOT NULL,PRIMARY KEY(user_id,id)
+);
+DO $$ DECLARE name TEXT; BEGIN
+ FOREACH name IN ARRAY ARRAY['coach_profiles','meal_plans','coach_answers'] LOOP
+  EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY',name);
+  EXECUTE format('REVOKE ALL ON TABLE %I FROM PUBLIC',name);
+  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE format('REVOKE ALL ON TABLE %I FROM anon',name); END IF;
+  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE format('REVOKE ALL ON TABLE %I FROM authenticated',name); END IF;
+  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='tracker_app') THEN
+   EXECUTE format('GRANT SELECT,INSERT,UPDATE,DELETE ON TABLE %I TO tracker_app',name);
+   EXECUTE format('CREATE POLICY tracker_backend ON %I TO tracker_app USING (true) WITH CHECK (true)',name);
+  END IF;
+ END LOOP;
+END $$;
+
+INSERT INTO public.schema_migrations(name,checksum) VALUES ('0004_coach.sql','74c57bc2039415c4325b3a62d35fe95263279cc2c125aff65801b769f02850c9');
 COMMIT;
 -- Run after the tracker migrations, as the Supabase database administrator.
 -- Create the restricted role, then set its password privately in SQL Editor:
@@ -89,7 +114,7 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 DO $$
 DECLARE name TEXT;
 BEGIN
- FOREACH name IN ARRAY ARRAY['saved_meals','meals','water_intakes','body_weights','workouts','tracker_accounts','oauth_codes','oauth_tokens','widget_tokens','auth_attempts','schema_migrations'] LOOP
+ FOREACH name IN ARRAY ARRAY['coach_profiles','meal_plans','coach_answers','saved_meals','meals','water_intakes','body_weights','workouts','tracker_accounts','oauth_codes','oauth_tokens','widget_tokens','auth_attempts','schema_migrations'] LOOP
   EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC, anon, authenticated',name);
   EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',name);
   IF name='schema_migrations' THEN

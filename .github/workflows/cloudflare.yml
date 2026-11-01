@@ -101,3 +101,5 @@ jobs:
           else
             npm run deploy:cloudflare
           fi
+      - name: Verify meal planner and live Cloudflare AI with synthetic account
+        run: node scripts/cloudflare-coach-check.mjs

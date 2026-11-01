@@ -25,9 +25,13 @@
     "SUPABASE_URL": "https://opjzjmmepjveasuohmej.supabase.co",
     "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_mXGbWj8KbwlNQwIlnwAEUw_tupjgWpE",
     "OAUTH_CLIENT_ID": "lean-tracker-chatgpt",
-    "OAUTH_REDIRECT_URIS": "https://chatgpt.com/connector/oauth/DeIABnEHrZpO"
+    "OAUTH_REDIRECT_URIS": "https://chatgpt.com/connector/oauth/DeIABnEHrZpO",
+    "COACH_AI_ENABLED": "true"
   },
   "observability": {
     "enabled": true
+  },
+  "ai": {
+    "binding": "AI"
   }
 }

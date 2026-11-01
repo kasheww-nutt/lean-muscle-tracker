@@ -1,3 +1,4 @@
+import {getProfile} from '../coach/service';
 import { env } from '../services/runtime';
 import { trackerUser } from '../services/access';
 import { TARGETS, localDate, validDate, parseArray, totalMeals, weightTrend, workoutComparisons, loggingStreak, type Water, type WaterDay, type VolumeDay, type LoggingDay, type Meal, type Weight, type Workout, type NutritionDay, type Ingredient, type Exercise } from '../services/tracker';
@@ -21,6 +22,8 @@ export async function GET(request: Request) {
         UNION ALL SELECT date FROM body_weights WHERE user_id = ? AND record_type = 'weigh_in'
       ) WHERE date <= ?`).bind(ownerId,ownerId,ownerId,ownerId,today).first<{date:string|null}>(),
     ]);
+    const profile=await getProfile(db,ownerId);
+    const targets={caloriesMin:profile.targets.calories,caloriesMax:profile.targets.calories,proteinMin:profile.targets.protein,proteinMax:profile.targets.protein,carbs:profile.targets.carbs,fat:profile.targets.fat};
     const history = historyRows.results ?? [], latestMealDate = history[0]?.date ?? null;
     const latestLogDate = latestActivity?.date ?? null;
     const date = requested || latestLogDate || today;
@@ -43,7 +46,7 @@ export async function GET(request: Request) {
     const workouts = (workoutRows.results ?? []).map(w => ({ ...w, exercises: parseArray<Exercise>(w.exercises) }));
     const weights = [...new Map((weightRows.results ?? []).map(w => [w.date, w] as const).reverse()).values()].sort((a, b) => b.date.localeCompare(a.date));
     const water = waterRows.results ?? [], loggingDays = activityRows.results ?? [];
-    return Response.json({ date, today, latestMealDate, latestLogDate, refreshedAt: new Date().toISOString(), totals: totalMeals(meals), targets: TARGETS, meals, history, weights, weightTrend: weightTrend(weights), referenceWeight: referenceRows.results?.[0] ?? null, workouts, comparisons: workoutComparisons(workouts), water, waterTotalMl: water.reduce((s,w) => s + Number(w.amount_ml), 0), waterHistory: waterHistoryRows.results ?? [], volumeHistory: volumeRows.results ?? [], loggingDays, streak: loggingStreak(loggingDays, today) }, { headers: noStore });
+    return Response.json({ date, today, latestMealDate, latestLogDate, refreshedAt: new Date().toISOString(), totals: totalMeals(meals), targets, meals, history, weights, weightTrend: weightTrend(weights), referenceWeight: referenceRows.results?.[0] ?? null, workouts, comparisons: workoutComparisons(workouts), water, waterTotalMl: water.reduce((s,w) => s + Number(w.amount_ml), 0), waterHistory: waterHistoryRows.results ?? [], volumeHistory: volumeRows.results ?? [], loggingDays, streak: loggingStreak(loggingDays, today) }, { headers: noStore });
   } catch (error) {
     console.error('Tracker dashboard failed', error instanceof Error ? error.message : 'Unknown error');
     return Response.json({ error: 'Could not load your saved entries. Try refreshing in a moment.' }, { status: 500, headers: noStore });
